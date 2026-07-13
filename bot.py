@@ -510,3 +510,4 @@ if __name__ == "__main__":
 
     logger.info("🚀 กำลัง启动 Bot...")
     bot.run(TOKEN, log_handler=None)
+    
