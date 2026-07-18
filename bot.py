@@ -17,7 +17,7 @@ import requests
 # ==================== ตั้งค่า ====================
 TOKEN = os.environ.get("DISCORD_BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
 ROBLOX_API_KEY = os.environ.get("ROBLOX_API_KEY", "scQlvkZsw02uUu1eaVgJ0Cau/pVhVLJjy6Iqt4EyuFlfGSklZXlKaGJHY2lPaUpTVXpJMU5pSXNJbXRwWkNJNkluTnBaeTB5TURJeExUQTNMVEV6VkRFNE9qVXhPalE1V2lJc0luUjVjQ0k2SWtwWFZDSjkuZXlKaGRXUWlPaUpTYjJKc2IzaEpiblJsY201aGJDSXNJbWx6Y3lJNklrTnNiM1ZrUVhWMGFHVnVkR2xqWVhScGIyNVRaWEoyYVdObElpd2lZbUZ6WlVGd2FVdGxlU0k2SW5OalVXeDJhMXB6ZHpBeWRWVjFNV1ZoVm1kS01FTmhkUzl3Vm1oV1RFcHFlVFpKY1hRMFJYbDFSbXhtUjFOcmJDSXNJbTkzYm1WeVNXUWlPaUl4TURNMU1UWTRORGt6SWl3aVpYaHdJam94TnpnME16Z3dOamczTENKcFlYUWlPakUzT0RRek56Y3dPRGNzSW01aVppSTZNVGM0TkRNM056QTROMzAuakMtV2g3X1gxM0t1ejhSeVVISHlPakswaWZPRTNva0hHa3g1clIzQjNaN0I5czdnSmZxYUJaVzlMSHJFa2NfSzRtYVJ0azR6QlhaQXkyMkJmbEZtMEpyNWRWR0dPSm9lRk1kdXFZcGYtWWpYMWZveTkzLWc5bkJYZ0l1X25mVTdMOXhOclpFbkZQYTJVcFB5MmZTWHdheVAzVWMwNVNubVQxeUFsdnZaTGRlX0hWMUdwc0QtbXFUaDVtTnFJbmtpcy1SY3lzWmNVM2taaW4tSGJfdmcwMGRuUmYtRWpWS2lha1A1bG5xeTRsUjFEb210Y1ZudXdlUzdfbE5IcXZ4UEVCejNBVmxGcG5ZQWk4RmppNXktdkVMWk9CN1NnUXhnbmV2dFdVUVBKYnE4SFhCZlluNWlkZjBKUDR1dUQ1TkZFYTFkeUcwLURMZEJwVDhkcTNwX2hB")
-ROBLOX_USER_ID = os.environ.get("ROBLOX_USER_ID", "1035168493")  # <-- ใส่ ID ตรงนี้ หรือใน Env
+ROBLOX_USER_ID = os.environ.get("ROBLOX_USER_ID", "1035168493")
 
 SONGS_FILE = "songs.json"
 QUEUE_FILE = "queue.json"
@@ -236,7 +236,7 @@ def upload_to_roblox(audio_path, name, description=""):
             "description": description or name,
             "creationContext": {
                 "creator": {
-                    "userId": ROBLOX_USER_ID  # <-- ใช้ตัวแปรที่ตั้งค่าไว้
+                    "userId": ROBLOX_USER_ID
                 }
             }
         }
@@ -373,15 +373,36 @@ intents.voice_states = True
 bot = discord.Client(intents=intents)
 tree = app_commands.CommandTree(bot)
 
+# ====== SYNC COMMANDS ทุก GUILD ======
 @bot.event
 async def on_ready():
-    logger.info(f"Logged in as {bot.user}")
-    await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.listening, name="คาราโอเกะ"))
+    logger.info(f"Logged in as {bot.user} (ID: {bot.user.id})")
+    
+    # Sync ทุก Guild ที่บอทอยู่
+    total_synced = 0
+    for guild in bot.guilds:
+        try:
+            guild_obj = discord.Object(id=guild.id)
+            bot.tree.clear_commands(guild=guild_obj)
+            synced = await bot.tree.sync(guild=guild_obj)
+            total_synced += len(synced)
+            logger.info(f"✅ Synced {len(synced)} commands to {guild.name} (ID: {guild.id})")
+        except Exception as e:
+            logger.error(f"❌ Guild {guild.name}: {e}")
+    
+    # Sync Global ด้วย
     try:
-        synced = await tree.sync()
-        logger.info(f"Synced {len(synced)} slash command(s)")
+        bot.tree.clear_commands(guild=None)
+        global_synced = await bot.tree.sync()
+        logger.info(f"✅ Global synced: {len(global_synced)} commands")
     except Exception as e:
-        logger.error(f"Failed to sync: {e}")
+        logger.error(f"❌ Global sync: {e}")
+    
+    await bot.change_presence(
+        activity=discord.Activity(type=discord.ActivityType.listening, name="คาราโอเกะ")
+    )
+    
+    logger.info(f"🚀 Bot ready! Total synced: {total_synced} commands")
 
 # ==================== คำสั่งหลัก ====================
 
@@ -651,6 +672,37 @@ async def cmd_info(interaction: discord.Interaction, uid: str):
         embed.set_thumbnail(url=s["CoverUrl"])
     
     await interaction.response.send_message(embed=embed)
+
+# ====== คำสั่งรีเซ็ต (สำหรับแอดมิน) ======
+@tree.command(name="resync", description="รีเซ็ตคำสั่งทั้งหมด (สำหรับแอดมิน)")
+async def cmd_resync(interaction: discord.Interaction):
+    if not interaction.user.guild_permissions.administrator:
+        await interaction.response.send_message("❌ ต้องเป็นแอดมิน!", ephemeral=True)
+        return
+    
+    await interaction.response.defer(thinking=True)
+    
+    try:
+        # ลบแล้วสร้างใหม่ทุก Guild
+        total = 0
+        for guild in bot.guilds:
+            guild_obj = discord.Object(id=guild.id)
+            bot.tree.clear_commands(guild=guild_obj)
+            synced = await bot.tree.sync(guild=guild_obj)
+            total += len(synced)
+        
+        # Global ด้วย
+        bot.tree.clear_commands(guild=None)
+        await bot.tree.sync()
+        
+        await interaction.edit_original_response(
+            content=f"✅ รีเซ็ตคำสั่งสำเร็จ!\n"
+            f"• Synced ไปยัง {len(bot.guilds)} เซิร์ฟเวอร์\n"
+            f"• รวม {total} คำสั่ง\n"
+            f"รอ 1-5 นาทีแล้วลอง / ดู"
+        )
+    except Exception as e:
+        await interaction.edit_original_response(content=f"❌ ผิดพลาด: {e}")
 
 # ==================== รัน ====================
 if __name__ == "__main__":
