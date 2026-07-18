@@ -167,7 +167,6 @@ async def play_next_in_queue(guild):
 
     if voice_client and audio_url:
         try:
-            # ใช้ FFmpeg ถ้ามี (Render อาจไม่มีติดตั้งมา แต่ลองก่อน)
             import subprocess
             subprocess.run(["ffmpeg", "-version"], capture_output=True, check=True)
 
@@ -510,4 +509,3 @@ if __name__ == "__main__":
 
     logger.info("🚀 กำลัง启动 Bot...")
     bot.run(TOKEN, log_handler=None)
-    
