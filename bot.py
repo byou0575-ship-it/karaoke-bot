@@ -11,6 +11,8 @@ import urllib.parse
 import threading
 import time
 import asyncio
+import base64
+import requests
 import discord
 from discord import app_commands
 from discord.ui import View, Button
@@ -30,6 +32,8 @@ logger = logging.getLogger("discord-bot")
 # Config & Paths
 # ──────────────────────────────────────────────
 TOKEN       = os.environ.get("DISCORD_BOT_TOKEN")
+ROBLOX_API_KEY = os.environ.get("ROBLOX_API_KEY")
+ROBLOX_USER_ID = os.environ.get("ROBLOX_USER_ID")
 SONGS_FILE  = os.path.join(os.path.dirname(__file__), "songs.json")
 CONFIG_FILE = os.path.join(os.path.dirname(__file__), "config.json")
 QUEUE_FILE  = os.path.join(os.path.dirname(__file__), "queue.json")
@@ -37,7 +41,7 @@ RATINGS_FILE = os.path.join(os.path.dirname(__file__), "ratings.json")
 COVERS_DIR  = os.path.join(os.path.dirname(__file__), "covers")
 
 # ──────────────────────────────────────────────
-# Flask Web Server (สำหรับ Render port binding)
+# Flask Web Server
 # ──────────────────────────────────────────────
 app = Flask(__name__)
 
@@ -51,13 +55,11 @@ def health():
 
 @app.route("/api/songs")
 def api_songs():
-    """API สำหรับ Roblox ดึงข้อมูลเพลง"""
     songs = load_songs()
     return songs, 200, {"Content-Type": "application/json"}
 
 @app.route("/api/queue")
 def api_queue():
-    """API สำหรับดูคิวปัจจุบัน"""
     return load_queue(), 200, {"Content-Type": "application/json"}
 
 def run_flask():
@@ -65,7 +67,53 @@ def run_flask():
     app.run(host="0.0.0.0", port=port, threaded=True)
 
 # ──────────────────────────────────────────────
-# Data helpers (with caching)
+# Roblox Audio Upload
+# ──────────────────────────────────────────────
+
+def upload_audio_to_roblox(file_path: str, name: str) -> str | None:
+    """อัปโหลดไฟล์เสียงไป Roblox ผ่าน Open Cloud API"""
+    if not ROBLOX_API_KEY or not ROBLOX_USER_ID:
+        logger.warning("ROBLOX_API_KEY or ROBLOX_USER_ID not set")
+        return None
+    
+    url = "https://apis.roblox.com/assets/v1/assets"
+    
+    with open(file_path, "rb") as f:
+        file_content = f.read()
+    
+    payload = {
+        "assetType": "Audio",
+        "displayName": name[:50],
+        "description": f"Karaoke song uploaded via bot",
+        "creationContext": {
+            "creator": {
+                "userId": int(ROBLOX_USER_ID)
+            }
+        }
+    }
+    
+    files = {
+        "request": (None, json.dumps(payload), "application/json"),
+        "fileContent": (os.path.basename(file_path), file_content, "audio/mpeg")
+    }
+    
+    headers = {"x-api-key": ROBLOX_API_KEY}
+    
+    try:
+        response = requests.post(url, headers=headers, files=files, timeout=30)
+        data = response.json()
+        if "assetId" in data:
+            logger.info(f"Uploaded audio to Roblox: {data['assetId']}")
+            return str(data["assetId"])
+        else:
+            logger.error(f"Upload failed: {data}")
+            return None
+    except Exception as e:
+        logger.error(f"Upload error: {e}")
+        return None
+
+# ──────────────────────────────────────────────
+# Data helpers
 # ──────────────────────────────────────────────
 
 _songs_cache = None
@@ -168,10 +216,6 @@ def fmt_duration(secs: int) -> str:
     m, s = divmod(int(secs), 60)
     return f"{m}:{s:02d}"
 
-# ──────────────────────────────────────────────
-# ดึงชื่อศิลปินจาก URL
-# ──────────────────────────────────────────────
-
 def extract_artist_from_url(url: str) -> str:
     try:
         if "youtube.com" in url or "youtu.be" in url:
@@ -181,10 +225,6 @@ def extract_artist_from_url(url: str) -> str:
         return domain.capitalize()
     except:
         return "ไม่ระบุ"
-
-# ──────────────────────────────────────────────
-# ดาวน์โหลดปกเพลง
-# ──────────────────────────────────────────────
 
 def download_cover(cover_url: str, song_id: str) -> str | None:
     if not cover_url:
@@ -205,10 +245,6 @@ def download_cover(cover_url: str, song_id: str) -> str | None:
         logger.warning(f"Failed to download cover: {e}")
         return None
 
-# ──────────────────────────────────────────────
-# กันซ้ำ - เช็คชื่อเพลง
-# ──────────────────────────────────────────────
-
 def find_duplicate_song(songs: dict, song_name: str) -> str | None:
     search_name = song_name.lower().strip()
     for sid, song in songs.items():
@@ -217,7 +253,7 @@ def find_duplicate_song(songs: dict, song_name: str) -> str | None:
     return None
 
 # ──────────────────────────────────────────────
-# Views (ปุ่มโต้ตอบ)
+# Views
 # ──────────────────────────────────────────────
 
 class SongListView(View):
@@ -284,7 +320,7 @@ class SongListView(View):
         await interaction.response.send_message(embed=e, ephemeral=True)
 
 # ──────────────────────────────────────────────
-# Song-list channel: build embeds
+# Song-list embeds
 # ──────────────────────────────────────────────
 
 SONGS_PER_PAGE = 10
@@ -303,7 +339,6 @@ def build_song_list_embeds(songs: dict) -> list[discord.Embed]:
     items = sorted(songs.values(), key=lambda s: s.get("SongName", ""))
     pages = math.ceil(len(items) / SONGS_PER_PAGE)
     embeds = []
-
     ratings = load_ratings()
 
     for page in range(pages):
@@ -338,7 +373,7 @@ def build_song_list_embeds(songs: dict) -> list[discord.Embed]:
     return embeds
 
 # ──────────────────────────────────────────────
-# Refresh song-list channel (with rate limit protection)
+# Refresh channel
 # ──────────────────────────────────────────────
 
 _refresh_lock = False
@@ -548,8 +583,6 @@ class EditSongModal(discord.ui.Modal):
 
 karaoke = app_commands.Group(name="karaoke", description="จัดการเพลงคาราโอเกะ")
 
-# ── /karaoke setchannel ───────────────────────
-
 @karaoke.command(name="setchannel", description="กำหนดช่องที่จะแสดงรายการเพลงอัตโนมัติ")
 @app_commands.describe(channel="ช่องที่ต้องการแสดงรายการเพลง")
 @app_commands.checks.has_permissions(manage_channels=True)
@@ -568,8 +601,6 @@ async def karaoke_setchannel(interaction: discord.Interaction, channel: discord.
 async def setchannel_error(interaction: discord.Interaction, error):
     if isinstance(error, app_commands.MissingPermissions):
         await interaction.response.send_message("⛔ ต้องมีสิทธิ์ Manage Channels", ephemeral=True)
-
-# ── /karaoke auto ─────────────────────────────
 
 @karaoke.command(name="auto", description="เพิ่มเพลงจาก URL หรือ Roblox ID (กันซ้ำ + ดึงศิลปินอัตโนมัติ)")
 @app_commands.describe(
@@ -658,8 +689,6 @@ async def karaoke_auto(
     embed.set_footer(text=f"เพิ่มโดย {interaction.user.name} · {url[:60]}")
     await interaction.followup.send(embed=embed)
 
-# ── /karaoke add ──────────────────────────────
-
 @karaoke.command(name="add", description="เพิ่มเพลงด้วย Roblox Asset ID (กันซ้ำ)")
 @app_commands.describe(roblox_id="Roblox Asset ID (ตัวเลข)")
 async def karaoke_add(interaction: discord.Interaction, roblox_id: str):
@@ -694,8 +723,6 @@ async def karaoke_add(interaction: discord.Interaction, roblox_id: str):
     )
     await refresh_song_channel(bot)
 
-# ── /karaoke lyrics ───────────────────────────
-
 @karaoke.command(name="lyrics", description="เพิ่ม/แก้ไขเนื้อเพลง")
 @app_commands.describe(song_id="Roblox Asset ID หรือ Song ID")
 async def karaoke_lyrics(interaction: discord.Interaction, song_id: str):
@@ -705,8 +732,6 @@ async def karaoke_lyrics(interaction: discord.Interaction, song_id: str):
         return
     await interaction.response.send_modal(LyricsModal(song_id))
 
-# ── /karaoke edit ─────────────────────────────
-
 @karaoke.command(name="edit", description="แก้ไขชื่อ ศิลปิน ความยาว หมวดหมู่ ปก")
 @app_commands.describe(song_id="Roblox Asset ID หรือ Song ID")
 async def karaoke_edit(interaction: discord.Interaction, song_id: str):
@@ -715,8 +740,6 @@ async def karaoke_edit(interaction: discord.Interaction, song_id: str):
         await interaction.response.send_message(f"❌ ไม่พบ `{song_id}`", ephemeral=True)
         return
     await interaction.response.send_modal(EditSongModal(song_id, songs[song_id]))
-
-# ── /karaoke remove ───────────────────────────
 
 @karaoke.command(name="remove", description="ลบเพลงออกจากรายการ")
 @app_commands.describe(song_id="Roblox Asset ID หรือ Song ID")
@@ -737,8 +760,6 @@ async def karaoke_remove(interaction: discord.Interaction, song_id: str):
         os.remove(cover_path)
     await interaction.response.send_message(f"🗑️ ลบ **{name}** (`{song_id}`) สำเร็จ")
     await refresh_song_channel(bot)
-
-# ── /karaoke info ─────────────────────────────
 
 @karaoke.command(name="info", description="ดูข้อมูลเพลง")
 @app_commands.describe(song_id="Roblox Asset ID หรือ Song ID")
@@ -765,8 +786,6 @@ async def karaoke_info(interaction: discord.Interaction, song_id: str):
         e.add_field(name="🔗 ลิงก์", value=s["SourceUrl"], inline=False)
     await interaction.response.send_message(embed=e)
 
-# ── /karaoke list ─────────────────────────────
-
 @karaoke.command(name="list", description="แสดงรายการเพลงทั้งหมดในแชทนี้")
 async def karaoke_list(interaction: discord.Interaction):
     songs = load_songs()
@@ -774,8 +793,6 @@ async def karaoke_list(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embeds[0])
     for e in embeds[1:]:
         await interaction.followup.send(embed=e)
-
-# ── /karaoke refresh ──────────────────────────
 
 @karaoke.command(name="refresh", description="รีเฟรชช่องรายการเพลงด้วยตัวเอง")
 @app_commands.checks.has_permissions(manage_messages=True)
@@ -790,8 +807,6 @@ async def karaoke_refresh(interaction: discord.Interaction):
     await refresh_song_channel(bot)
     await interaction.followup.send("✅ รีเฟรชรายการเพลงสำเร็จ!", ephemeral=True)
 
-# ── /karaoke export ───────────────────────────
-
 @karaoke.command(name="export", description="ส่งออกไฟล์ songs.json")
 async def karaoke_export(interaction: discord.Interaction):
     if not os.path.exists(SONGS_FILE):
@@ -801,8 +816,6 @@ async def karaoke_export(interaction: discord.Interaction):
         "📦 ไฟล์เพลงทั้งหมด",
         file=discord.File(SONGS_FILE, filename="songs.json"),
     )
-
-# ── /karaoke random ───────────────────────────
 
 @karaoke.command(name="random", description="สุ่มเพลงจากคลังทั้งหมด")
 async def karaoke_random_cmd(interaction: discord.Interaction):
@@ -821,8 +834,6 @@ async def karaoke_random_cmd(interaction: discord.Interaction):
     e.add_field(name="📝 ต่อคิวเลย?", value=f"`/karaoke queue add {s['SongId']}`", inline=False)
     await interaction.response.send_message(embed=e)
 
-# ── /karaoke like ─────────────────────────────
-
 @karaoke.command(name="like", description="ให้คะแนนเพลง (กดไลก์)")
 @app_commands.describe(song_id="Roblox Asset ID หรือ Song ID")
 async def karaoke_like(interaction: discord.Interaction, song_id: str):
@@ -837,8 +848,6 @@ async def karaoke_like(interaction: discord.Interaction, song_id: str):
         f"⭐ ให้คะแนน **{songs[song_id]['SongName']}** แล้ว! (ตอนนี้มี {ratings[song_id]} คะแนน)"
     )
     await refresh_song_channel(bot)
-
-# ── /karaoke top ─────────────────────────────
 
 @karaoke.command(name="top", description="อันดับเพลงยอดนิยม")
 async def karaoke_top(interaction: discord.Interaction):
@@ -859,8 +868,6 @@ async def karaoke_top(interaction: discord.Interaction):
         lines.append(f"{medal} **{name}** — ⭐ {score} คะแนน")
     e = discord.Embed(title="🏆 เพลงยอดนิยม", description="\n".join(lines), color=0xf1c40f)
     await interaction.response.send_message(embed=e)
-
-# ── /karaoke nowplaying ───────────────────────
 
 @karaoke.command(name="nowplaying", description="ดูเพลงที่กำลังร้อง / คิวถัดไป")
 async def karaoke_nowplaying(interaction: discord.Interaction):
@@ -1031,7 +1038,7 @@ async def clear_error(interaction: discord.Interaction, error):
         await interaction.response.send_message("⛔ ต้องมีสิทธิ์ Manage Messages", ephemeral=True)
 
 # ──────────────────────────────────────────────
-# Run (แก้ไขสำคัญ: ใช้ reconnect=True + รอนานขึ้น)
+# Run
 # ──────────────────────────────────────────────
 
 async def main():
@@ -1039,23 +1046,19 @@ async def main():
         logger.error("DISCORD_BOT_TOKEN not set.")
         raise SystemExit(1)
 
-    # รอ 30 วินาทีก่อน login (ป้องกัน rate limit ตอน deploy)
     logger.info("Waiting 30 seconds before Discord login to avoid rate limits...")
     await asyncio.sleep(30)
 
-    # รัน Flask ใน thread แยก
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
     logger.info(f"Flask server started on port {os.environ.get('PORT', 10000)}")
 
-    # ใช้ reconnect=True และ handle rate limit อย่างระมัดระวัง
     async with bot:
         try:
             await bot.start(TOKEN, reconnect=True)
         except discord.HTTPException as e:
             if e.status == 429:
                 logger.error(f"Rate limited on startup: {e}")
-                # รอ 60 วินาทีแล้วลองใหม่
                 await asyncio.sleep(60)
                 await bot.start(TOKEN, reconnect=True)
             else:
