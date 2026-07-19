@@ -71,7 +71,6 @@ def run_flask():
 # ──────────────────────────────────────────────
 
 def download_youtube_info(url: str) -> dict | None:
-    """ดึงข้อมูลเพลงจาก YouTube โดยไม่ดาวน์โหลดไฟล์"""
     try:
         import yt_dlp
         ydl_opts = {
@@ -87,7 +86,6 @@ def download_youtube_info(url: str) -> dict | None:
         return None
 
 def download_youtube_audio(url: str, output_path: str) -> bool:
-    """ดาวน์โหลดเสียงจาก YouTube เป็น MP3"""
     try:
         import yt_dlp
         ydl_opts = {
@@ -108,7 +106,6 @@ def download_youtube_audio(url: str, output_path: str) -> bool:
         return False
 
 def upload_audio_to_roblox(file_path: str, name: str) -> str | None:
-    """อัปโหลดไฟล์เสียงไป Roblox ผ่าน Open Cloud API"""
     if not ROBLOX_API_KEY or not ROBLOX_USER_ID:
         logger.warning("ROBLOX_API_KEY or ROBLOX_USER_ID not set")
         return None
@@ -118,7 +115,6 @@ def upload_audio_to_roblox(file_path: str, name: str) -> str | None:
     with open(file_path, "rb") as f:
         file_content = f.read()
     
-    # ตรวจสอบขนาดไฟล์ (Roblox limit ~20MB)
     file_size = len(file_content)
     if file_size > 20 * 1024 * 1024:
         logger.error(f"File too large: {file_size} bytes")
@@ -156,7 +152,6 @@ def upload_audio_to_roblox(file_path: str, name: str) -> str | None:
         return None
 
 def download_cover_image(cover_url: str, song_id: str) -> str | None:
-    """ดาวน์โหลดปกเพลง"""
     if not cover_url:
         return None
     try:
@@ -393,7 +388,7 @@ def build_song_list_embeds(songs: dict) -> list[discord.Embed]:
             likes = ratings.get(sid, 0)
             like_str = f" · ⭐ {likes}" if likes else ""
             cover_info = "🖼️" if s.get("CoverUrl") else ""
-            roblox_status = "🟢 Roblox" if s.get("RobloxAssetId") else "🔴 Local"
+            roblox_status = "🟢" if s.get("RobloxAssetId") else "🔴"
 
             lines.append(
                 f"{mark} {icon} **{name}** {cover_info} {roblox_status}\n"
@@ -401,7 +396,7 @@ def build_song_list_embeds(songs: dict) -> list[discord.Embed]:
             )
 
         e.description = "\n\n".join(lines)
-        e.set_footer(text=f"รวม {len(songs)} เพลง · ✅ มีซับ ⏳ ยังไม่มีซับ · 🟢 อัปโหลด Roblox แล้ว")
+        e.set_footer(text=f"รวม {len(songs)} เพลง · ✅ มีซับ ⏳ ยังไม่มีซับ · 🟢 อัปโหลด Roblox")
         embeds.append(e)
 
     return embeds
@@ -636,8 +631,6 @@ async def setchannel_error(interaction: discord.Interaction, error):
     if isinstance(error, app_commands.MissingPermissions):
         await interaction.response.send_message("⛔ ต้องมีสิทธิ์ Manage Channels", ephemeral=True)
 
-# ── /karaoke auto (อัปเกรดใหม่!) ─────────────────────────────
-
 @karaoke.command(name="auto", description="เพิ่มเพลงจาก YouTube → ดึงข้อมูลจริง → อัปโหลด Roblox อัตโนมัติ")
 @app_commands.describe(
     url="YouTube URL (จะดาวน์โหลด + อัปโหลด Roblox อัตโนมัติ)",
@@ -650,7 +643,6 @@ async def karaoke_auto(
 ):
     await interaction.response.defer(thinking=True)
     
-    # ตรวจสอบว่าเป็น YouTube URL
     if "youtube.com" not in url and "youtu.be" not in url:
         await interaction.followup.send(
             "❌ รองรับเฉพาะ YouTube URL เท่านั้น\n"
@@ -659,7 +651,6 @@ async def karaoke_auto(
         )
         return
     
-    # ขั้นตอนที่ 1: ดึงข้อมูลจาก YouTube
     status_msg = await interaction.followup.send("🔍 กำลังดึงข้อมูลจาก YouTube...")
     
     yt_info = download_youtube_info(url)
@@ -667,31 +658,24 @@ async def karaoke_auto(
         await status_msg.edit(content="❌ ดึงข้อมูลจาก YouTube ไม่สำเร็จ\nลองใช้ URL อื่น")
         return
     
-    # ดึงข้อมูลจริงจาก YouTube
     yt_title = yt_info.get('title', 'ไม่มีชื่อ')
     yt_duration = int(yt_info.get('duration', 180))
     yt_artist = yt_info.get('uploader', 'ไม่ระบุ')
     yt_thumbnail = None
     
-    # หาภาพปกที่ดีที่สุด
     thumbnails = yt_info.get('thumbnails', [])
     if thumbnails:
-        # เอาภาพที่ใหญ่ที่สุด
         best_thumb = max(thumbnails, key=lambda x: x.get('width', 0) * x.get('height', 0))
         yt_thumbnail = best_thumb.get('url')
     
-    # แยกชื่อเพลงกับศิลปิน (ถ้าเป็นไปได้)
     song_name = yt_title
     artist_name = yt_artist
     
-    # พยายามแยก "Artist - Song Name" หรือ "Song Name - Artist"
     if ' - ' in yt_title:
         parts = yt_title.split(' - ', 1)
-        # ส่วนใหญ่จะเป็น "Artist - Song Name"
         artist_name = parts[0].strip()
         song_name = parts[1].strip()
     
-    # ลบคำที่ไม่จำเป็นออกจากชื่อเพลง
     clean_name = re.sub(r'\(.*?(Official|Audio|MV|Video|Lyric|Karaoke).*?\)', '', song_name, flags=re.IGNORECASE)
     clean_name = re.sub(r'\[.*?(Official|Audio|MV|Video|Lyric|Karaoke).*?\]', '', clean_name, flags=re.IGNORECASE)
     clean_name = clean_name.strip()
@@ -700,14 +684,12 @@ async def karaoke_auto(
     
     await status_msg.edit(content=f"📥 พบเพลง: **{clean_name}**\n🎤 ศิลปิน: {artist_name}\n⏱️ ความยาว: {fmt_duration(yt_duration)}\n🔄 กำลังดาวน์โหลดเสียง...")
     
-    # ขั้นตอนที่ 2: ดาวน์โหลดเสียง
     temp_dir = tempfile.mkdtemp()
     audio_path = os.path.join(temp_dir, "audio")
     
     success = download_youtube_audio(url, audio_path)
     if not success:
         await status_msg.edit(content="❌ ดาวน์โหลดเสียงไม่สำเร็จ")
-        # ลบ temp
         import shutil
         shutil.rmtree(temp_dir, ignore_errors=True)
         return
@@ -720,10 +702,8 @@ async def karaoke_auto(
     
     await status_msg.edit(content=f"⬆️ กำลังอัปโหลดเสียงไป Roblox...\n(อาจใช้เวลา 1-2 นาที)")
     
-    # ขั้นตอนที่ 3: อัปโหลดไป Roblox
     roblox_id = upload_audio_to_roblox(mp3_path, clean_name)
     
-    # ลบไฟล์ temp
     shutil.rmtree(temp_dir, ignore_errors=True)
     
     if not roblox_id:
@@ -736,15 +716,12 @@ async def karaoke_auto(
                              "ตรวจสอบ Environment Variables ใน Render Dashboard")
         return
     
-    # ขั้นตอนที่ 4: ดาวน์โหลดปกเพลง
     cover_path = None
     if yt_thumbnail:
         cover_path = download_cover_image(yt_thumbnail, roblox_id)
     
-    # ขั้นตอนที่ 5: บันทึกข้อมูล
     songs = load_songs()
     
-    # กันซ้ำ
     dup = find_duplicate_song(songs, clean_name)
     if dup:
         await status_msg.edit(content=f"⚠️ **มีเพลงซ้ำ!**\nเพลง **{clean_name}** มีอยู่แล้ว (ID: `{dup}`)")
@@ -775,7 +752,6 @@ async def karaoke_auto(
     save_songs(songs)
     await refresh_song_channel(bot)
     
-    # แสดงผลสำเร็จ
     embed = discord.Embed(title="✅ เพิ่มเพลง + อัปโหลด Roblox สำเร็จ!", color=0x2ecc71)
     embed.add_field(name="🎵 ชื่อเพลง", value=clean_name, inline=False)
     embed.add_field(name="🎤 ศิลปิน", value=artist_name, inline=True)
@@ -1147,7 +1123,7 @@ async def clear_error(interaction: discord.Interaction, error):
         await interaction.response.send_message("⛔ ต้องมีสิทธิ์ Manage Messages", ephemeral=True)
 
 # ──────────────────────────────────────────────
-# Run
+# Run (แก้ไขสำคัญ - รอนานขึ้น + จัดการ Session)
 # ──────────────────────────────────────────────
 
 async def main():
@@ -1155,33 +1131,44 @@ async def main():
         logger.error("DISCORD_BOT_TOKEN not set.")
         raise SystemExit(1)
 
-    logger.info("Waiting 60 seconds before Discord login to avoid rate limits...")
-    await asyncio.sleep(60)
+    # รอ 5 นาทีก่อน login (ป้องกัน Cloudflare Ban)
+    wait_time = 300  # 5 นาที
+    logger.info(f"Waiting {wait_time} seconds before Discord login to avoid rate limits...")
+    logger.info("If this is first deploy, please wait...")
+    await asyncio.sleep(wait_time)
 
+    # รัน Flask ใน thread แยก
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
     logger.info(f"Flask server started on port {os.environ.get('PORT', 10000)}")
 
+    # สร้าง bot session ใหม่ทุกครั้ง
     async with bot:
         retry_count = 0
         max_retries = 3
         
         while retry_count < max_retries:
             try:
+                logger.info(f"Attempting Discord login (attempt {retry_count + 1}/{max_retries})...")
                 await bot.start(TOKEN, reconnect=True)
                 break
             except discord.HTTPException as e:
                 if e.status == 429:
-                    wait_time = min(300, 60 * (2 ** retry_count))
-                    logger.error(f"Rate limited on startup (attempt {retry_count + 1}/{max_retries}): {e}")
-                    logger.info(f"Waiting {wait_time} seconds before retry...")
-                    await asyncio.sleep(wait_time)
+                    retry_wait = min(600, 120 * (2 ** retry_count))  # 120, 240, 480 วินาที
+                    logger.error(f"Rate limited: {e}")
+                    logger.info(f"Waiting {retry_wait} seconds before retry...")
+                    await asyncio.sleep(retry_wait)
                     retry_count += 1
                 else:
+                    logger.error(f"Discord HTTP error: {e}")
                     raise
+            except Exception as e:
+                logger.error(f"Unexpected error: {e}")
+                raise
         
         if retry_count >= max_retries:
-            logger.error("Max retries exceeded. Bot failed to start.")
+            logger.error("Max retries exceeded. Possible Cloudflare ban.")
+            logger.error("Please wait 1 hour and try again.")
             raise SystemExit(1)
 
 if __name__ == "__main__":
