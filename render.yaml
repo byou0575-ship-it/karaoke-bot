@@ -8,3 +8,9 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
+      - key: DISCORD_BOT_TOKEN
+        sync: false
+      - key: ROBLOX_API_KEY
+        sync: false
+      - key: ROBLOX_USER_ID
+        sync: false
