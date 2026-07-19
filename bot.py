@@ -8,18 +8,27 @@ import datetime
 import hashlib
 import urllib.request
 import urllib.parse
+import threading
+import time
 import discord
 from discord import app_commands
 from discord.ui import View, Button
 from collections import defaultdict
+from flask import Flask
 
+# ──────────────────────────────────────────────
+# Logging
+# ──────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger("discord-bot")
 
-TOKEN      = os.environ.get("DISCORD_BOT_TOKEN")
+# ──────────────────────────────────────────────
+# Config & Paths
+# ──────────────────────────────────────────────
+TOKEN       = os.environ.get("DISCORD_BOT_TOKEN")
 SONGS_FILE  = os.path.join(os.path.dirname(__file__), "songs.json")
 CONFIG_FILE = os.path.join(os.path.dirname(__file__), "config.json")
 QUEUE_FILE  = os.path.join(os.path.dirname(__file__), "queue.json")
@@ -27,28 +36,76 @@ RATINGS_FILE = os.path.join(os.path.dirname(__file__), "ratings.json")
 COVERS_DIR  = os.path.join(os.path.dirname(__file__), "covers")
 
 # ──────────────────────────────────────────────
-# Data helpers
+# Flask Web Server (สำหรับ Render port binding)
+# ──────────────────────────────────────────────
+app = Flask(__name__)
+
+@app.route("/")
+def home():
+    return "Karaoke Bot is running!", 200
+
+@app.route("/health")
+def health():
+    return {"status": "ok", "bot": str(bot.user) if bot.user else "offline"}, 200
+
+def run_flask():
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port, threaded=True)
+
+# ──────────────────────────────────────────────
+# Data helpers (with caching)
 # ──────────────────────────────────────────────
 
+_songs_cache = None
+_songs_mtime = 0
+_config_cache = None
+_config_mtime = 0
+_ratings_cache = None
+_ratings_mtime = 0
+
 def load_songs() -> dict:
+    global _songs_cache, _songs_mtime
+    try:
+        mtime = os.path.getmtime(SONGS_FILE)
+        if _songs_cache is not None and mtime == _songs_mtime:
+            return _songs_cache
+    except OSError:
+        return {}
     if not os.path.exists(SONGS_FILE):
         return {}
     with open(SONGS_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+        _songs_cache = json.load(f)
+    _songs_mtime = os.path.getmtime(SONGS_FILE)
+    return _songs_cache
 
 def save_songs(songs: dict) -> None:
+    global _songs_cache, _songs_mtime
     with open(SONGS_FILE, "w", encoding="utf-8") as f:
         json.dump(songs, f, ensure_ascii=False, indent=2)
+    _songs_cache = songs
+    _songs_mtime = os.path.getmtime(SONGS_FILE)
 
 def load_config() -> dict:
+    global _config_cache, _config_mtime
+    try:
+        mtime = os.path.getmtime(CONFIG_FILE)
+        if _config_cache is not None and mtime == _config_mtime:
+            return _config_cache
+    except OSError:
+        return {}
     if not os.path.exists(CONFIG_FILE):
         return {}
     with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+        _config_cache = json.load(f)
+    _config_mtime = os.path.getmtime(CONFIG_FILE)
+    return _config_cache
 
 def save_config(cfg: dict) -> None:
+    global _config_cache, _config_mtime
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
         json.dump(cfg, f, ensure_ascii=False, indent=2)
+    _config_cache = cfg
+    _config_mtime = os.path.getmtime(CONFIG_FILE)
 
 def load_queue() -> list:
     if not os.path.exists(QUEUE_FILE):
@@ -61,14 +118,26 @@ def save_queue(q: list) -> None:
         json.dump(q, f, ensure_ascii=False, indent=2)
 
 def load_ratings() -> dict:
+    global _ratings_cache, _ratings_mtime
+    try:
+        mtime = os.path.getmtime(RATINGS_FILE)
+        if _ratings_cache is not None and mtime == _ratings_mtime:
+            return _ratings_cache
+    except OSError:
+        return {}
     if not os.path.exists(RATINGS_FILE):
         return {}
     with open(RATINGS_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+        _ratings_cache = json.load(f)
+    _ratings_mtime = os.path.getmtime(RATINGS_FILE)
+    return _ratings_cache
 
 def save_ratings(r: dict) -> None:
+    global _ratings_cache, _ratings_mtime
     with open(RATINGS_FILE, "w", encoding="utf-8") as f:
         json.dump(r, f, ensure_ascii=False, indent=2)
+    _ratings_cache = r
+    _ratings_mtime = os.path.getmtime(RATINGS_FILE)
 
 def extract_roblox_id(url_or_id: str) -> str | None:
     if url_or_id.isdigit():
@@ -223,6 +292,9 @@ def build_song_list_embeds(songs: dict) -> list[discord.Embed]:
     pages = math.ceil(len(items) / SONGS_PER_PAGE)
     embeds = []
 
+    # Cache ratings ครั้งเดียว ไม่ต้อง load ซ้ำ
+    ratings = load_ratings()
+
     for page in range(pages):
         chunk = items[page * SONGS_PER_PAGE:(page + 1) * SONGS_PER_PAGE]
         e = discord.Embed(title="🎤 รายการเพลง Karaoke", color=0x1e1e2e)
@@ -239,7 +311,7 @@ def build_song_list_embeds(songs: dict) -> list[discord.Embed]:
             artist = s.get("Artist", "ไม่ระบุ")
             sid = s.get("SongId", "?")
             mark = "✅" if has_lyrics else "⏳"
-            likes = load_ratings().get(sid, 0)
+            likes = ratings.get(sid, 0)
             like_str = f" · ⭐ {likes}" if likes else ""
             cover_info = "🖼️" if s.get("CoverUrl") else ""
 
@@ -255,51 +327,77 @@ def build_song_list_embeds(songs: dict) -> list[discord.Embed]:
     return embeds
 
 # ──────────────────────────────────────────────
-# Refresh song-list channel
+# Refresh song-list channel (with rate limit protection)
 # ──────────────────────────────────────────────
 
+_refresh_lock = False
+
 async def refresh_song_channel(client: discord.Client) -> None:
-    cfg = load_config()
-    channel_id = cfg.get("song_channel_id")
-    message_ids = cfg.get("song_message_ids", [])
-
-    if not channel_id:
+    global _refresh_lock
+    if _refresh_lock:
+        logger.warning("Refresh already in progress, skipping...")
         return
+    _refresh_lock = True
+    try:
+        cfg = load_config()
+        channel_id = cfg.get("song_channel_id")
+        message_ids = cfg.get("song_message_ids", [])
 
-    channel = client.get_channel(int(channel_id))
-    if not channel:
-        return
+        if not channel_id:
+            return
 
-    songs = load_songs()
-    embeds = build_song_list_embeds(songs)
-    view = SongListView(client)
+        channel = client.get_channel(int(channel_id))
+        if not channel:
+            return
 
-    edited = []
-    for i, mid in enumerate(message_ids):
-        if i >= len(embeds):
-            break
-        try:
-            msg = await channel.fetch_message(int(mid))
-            await msg.edit(embed=embeds[i], view=view if i == 0 else None)
-            edited.append(mid)
-        except (discord.NotFound, discord.HTTPException):
-            pass
+        songs = load_songs()
+        embeds = build_song_list_embeds(songs)
+        view = SongListView(client)
 
-    new_ids = list(edited)
-    start = len(edited)
-    for i, embed in enumerate(embeds[start:], start=start):
-        msg = await channel.send(embed=embed, view=view if i == 0 else None)
-        new_ids.append(msg.id)
+        edited = []
+        for i, mid in enumerate(message_ids):
+            if i >= len(embeds):
+                break
+            try:
+                msg = await channel.fetch_message(int(mid))
+                await msg.edit(embed=embeds[i], view=view if i == 0 else None)
+                edited.append(mid)
+                # Rate limit protection: หน่วง 0.5 วินาทีระหว่าง edit
+                if i < len(message_ids) - 1:
+                    await discord.utils.sleep(0.5)
+            except (discord.NotFound, discord.HTTPException):
+                pass
 
-    for mid in message_ids[len(embeds):]:
-        try:
-            msg = await channel.fetch_message(int(mid))
-            await msg.delete()
-        except Exception:
-            pass
+        new_ids = list(edited)
+        start = len(edited)
+        for i, embed in enumerate(embeds[start:], start=start):
+            try:
+                msg = await channel.send(embed=embed, view=view if i == 0 else None)
+                new_ids.append(msg.id)
+                # Rate limit protection
+                if i < len(embeds) - 1:
+                    await discord.utils.sleep(1.0)
+            except discord.HTTPException as e:
+                if e.status == 429:
+                    logger.warning("Rate limited while sending embeds, waiting 5s...")
+                    await discord.utils.sleep(5)
+                    msg = await channel.send(embed=embed, view=view if i == 0 else None)
+                    new_ids.append(msg.id)
+                else:
+                    raise
 
-    cfg["song_message_ids"] = new_ids
-    save_config(cfg)
+        for mid in message_ids[len(embeds):]:
+            try:
+                msg = await channel.fetch_message(int(mid))
+                await msg.delete()
+                await discord.utils.sleep(0.5)
+            except Exception:
+                pass
+
+        cfg["song_message_ids"] = new_ids
+        save_config(cfg)
+    finally:
+        _refresh_lock = False
 
 # ──────────────────────────────────────────────
 # Bot
@@ -312,26 +410,40 @@ intents.voice_states = True
 bot = discord.Client(intents=intents)
 tree = app_commands.CommandTree(bot)
 
-# ตัวแปรเช็คว่า sync แล้วหรือยัง
 _synced = False
+_sync_retry_count = 0
+MAX_SYNC_RETRIES = 3
 
 @bot.event
 async def on_ready():
-    global _synced
+    global _synced, _sync_retry_count
     logger.info(f"Logged in as {bot.user} (ID: {bot.user.id})")
     await bot.change_presence(
         activity=discord.Activity(type=discord.ActivityType.listening, name="/karaoke auto")
     )
 
-    # Sync แค่ครั้งแรกเท่านั้น ไม่ sync ซ้ำ
-    if not _synced:
+    # Sync แค่ครั้งแรก พร้อม exponential backoff
+    if not _synced and _sync_retry_count < MAX_SYNC_RETRIES:
         try:
             synced = await tree.sync()
             logger.info(f"Synced {len(synced)} slash command(s)")
             _synced = True
         except discord.HTTPException as e:
             if e.status == 429:
-                logger.warning("Rate limited by Discord, skipping sync. Will retry next restart.")
+                wait_time = 2 ** _sync_retry_count  # 1, 2, 4 วินาที
+                logger.warning(f"Rate limited by Discord (sync), retrying in {wait_time}s... (attempt {_sync_retry_count + 1}/{MAX_SYNC_RETRIES})")
+                await discord.utils.sleep(wait_time)
+                _sync_retry_count += 1
+                # ลอง sync อีกครั้ง
+                try:
+                    synced = await tree.sync()
+                    logger.info(f"Synced {len(synced)} slash command(s) on retry")
+                    _synced = True
+                except discord.HTTPException as e2:
+                    if e2.status == 429:
+                        logger.error("Still rate limited, will retry on next restart")
+                    else:
+                        logger.error(f"Failed to sync on retry: {e2}")
             else:
                 logger.error(f"Failed to sync: {e}")
 
@@ -615,13 +727,13 @@ async def karaoke_remove(interaction: discord.Interaction, song_id: str):
         await interaction.response.send_message("❌ ไม่พบเพลง", ephemeral=True)
         return
     name = songs[song_id]["SongName"]
+    cover_path = songs[song_id].get("CoverPath")
     del songs[song_id]
     ratings = load_ratings()
     if song_id in ratings:
         del ratings[song_id]
         save_ratings(ratings)
     save_songs(songs)
-    cover_path = songs.get(song_id, {}).get("CoverPath")
     if cover_path and os.path.exists(cover_path):
         os.remove(cover_path)
     await interaction.response.send_message(f"🗑️ ลบ **{name}** (`{song_id}`) สำเร็จ")
@@ -927,4 +1039,10 @@ if __name__ == "__main__":
     if not TOKEN:
         logger.error("DISCORD_BOT_TOKEN not set.")
         raise SystemExit(1)
+
+    # รัน Flask ใน thread แยก (สำหรับ Render port binding)
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+    logger.info(f"Flask server started on port {os.environ.get('PORT', 10000)}")
+
     bot.run(TOKEN, log_handler=None)
