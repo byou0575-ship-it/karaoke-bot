@@ -3,8 +3,9 @@ services:
     name: karaoke-bot
     runtime: python
     plan: free
+    env: python
     buildCommand: |
-      apt-get update && apt-get install -y ffmpeg
+      python --version
       pip install -r requirements.txt
     startCommand: python bot.py
     envVars:
