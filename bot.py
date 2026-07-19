@@ -10,6 +10,7 @@ import urllib.request
 import urllib.parse
 import threading
 import time
+import asyncio
 import discord
 from discord import app_commands
 from discord.ui import View, Button
@@ -364,7 +365,7 @@ async def refresh_song_channel(client: discord.Client) -> None:
                 edited.append(mid)
                 # Rate limit protection: หน่วง 0.5 วินาทีระหว่าง edit
                 if i < len(message_ids) - 1:
-                    await discord.utils.sleep(0.5)
+                    await asyncio.sleep(0.5)
             except (discord.NotFound, discord.HTTPException):
                 pass
 
@@ -376,11 +377,11 @@ async def refresh_song_channel(client: discord.Client) -> None:
                 new_ids.append(msg.id)
                 # Rate limit protection
                 if i < len(embeds) - 1:
-                    await discord.utils.sleep(1.0)
+                    await asyncio.sleep(1.0)
             except discord.HTTPException as e:
                 if e.status == 429:
                     logger.warning("Rate limited while sending embeds, waiting 5s...")
-                    await discord.utils.sleep(5)
+                    await asyncio.sleep(5)
                     msg = await channel.send(embed=embed, view=view if i == 0 else None)
                     new_ids.append(msg.id)
                 else:
@@ -390,7 +391,7 @@ async def refresh_song_channel(client: discord.Client) -> None:
             try:
                 msg = await channel.fetch_message(int(mid))
                 await msg.delete()
-                await discord.utils.sleep(0.5)
+                await asyncio.sleep(0.5)
             except Exception:
                 pass
 
@@ -412,7 +413,7 @@ tree = app_commands.CommandTree(bot)
 
 _synced = False
 _sync_retry_count = 0
-MAX_SYNC_RETRIES = 3
+MAX_SYNC_RETRIES = 5
 
 @bot.event
 async def on_ready():
@@ -424,28 +425,23 @@ async def on_ready():
 
     # Sync แค่ครั้งแรก พร้อม exponential backoff
     if not _synced and _sync_retry_count < MAX_SYNC_RETRIES:
-        try:
-            synced = await tree.sync()
-            logger.info(f"Synced {len(synced)} slash command(s)")
-            _synced = True
-        except discord.HTTPException as e:
-            if e.status == 429:
-                wait_time = 2 ** _sync_retry_count  # 1, 2, 4 วินาที
-                logger.warning(f"Rate limited by Discord (sync), retrying in {wait_time}s... (attempt {_sync_retry_count + 1}/{MAX_SYNC_RETRIES})")
-                await discord.utils.sleep(wait_time)
-                _sync_retry_count += 1
-                # ลอง sync อีกครั้ง
-                try:
-                    synced = await tree.sync()
-                    logger.info(f"Synced {len(synced)} slash command(s) on retry")
-                    _synced = True
-                except discord.HTTPException as e2:
-                    if e2.status == 429:
-                        logger.error("Still rate limited, will retry on next restart")
-                    else:
-                        logger.error(f"Failed to sync on retry: {e2}")
-            else:
-                logger.error(f"Failed to sync: {e}")
+        for attempt in range(MAX_SYNC_RETRIES):
+            try:
+                synced = await tree.sync()
+                logger.info(f"Synced {len(synced)} slash command(s)")
+                _synced = True
+                break
+            except discord.HTTPException as e:
+                if e.status == 429:
+                    wait_time = 2 ** attempt  # 1, 2, 4, 8, 16 วินาที
+                    logger.warning(f"Rate limited by Discord (sync), waiting {wait_time}s... (attempt {attempt + 1}/{MAX_SYNC_RETRIES})")
+                    await asyncio.sleep(wait_time)
+                    _sync_retry_count += 1
+                else:
+                    logger.error(f"Failed to sync: {e}")
+                    break
+        if not _synced:
+            logger.warning("Could not sync commands due to rate limits. Will retry on next restart.")
 
     bot.add_view(SongListView(bot))
     await refresh_song_channel(bot)
@@ -1035,14 +1031,22 @@ async def clear_error(interaction: discord.Interaction, error):
 # Run
 # ──────────────────────────────────────────────
 
-if __name__ == "__main__":
+async def main():
     if not TOKEN:
         logger.error("DISCORD_BOT_TOKEN not set.")
         raise SystemExit(1)
+
+    # รอ 10 วินาทีก่อน login (ป้องกัน rate limit ตอน deploy)
+    logger.info("Waiting 10 seconds before Discord login to avoid rate limits...")
+    await asyncio.sleep(10)
 
     # รัน Flask ใน thread แยก (สำหรับ Render port binding)
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
     logger.info(f"Flask server started on port {os.environ.get('PORT', 10000)}")
 
-    bot.run(TOKEN, log_handler=None)
+    async with bot:
+        await bot.start(TOKEN)
+
+if __name__ == "__main__":
+    asyncio.run(main())
