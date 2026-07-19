@@ -88,7 +88,7 @@ def fmt_duration(secs: int) -> str:
     return f"{m}:{s:02d}"
 
 # ──────────────────────────────────────────────
-# ดึงชื่อศิลปินจาก URL (ง่ายๆ)
+# ดึงชื่อศิลปินจาก URL
 # ──────────────────────────────────────────────
 
 def extract_artist_from_url(url: str) -> str:
@@ -312,17 +312,28 @@ intents.voice_states = True
 bot = discord.Client(intents=intents)
 tree = app_commands.CommandTree(bot)
 
+# ตัวแปรเช็คว่า sync แล้วหรือยัง
+_synced = False
+
 @bot.event
 async def on_ready():
+    global _synced
     logger.info(f"Logged in as {bot.user} (ID: {bot.user.id})")
     await bot.change_presence(
         activity=discord.Activity(type=discord.ActivityType.listening, name="/karaoke auto")
     )
-    try:
-        synced = await tree.sync()
-        logger.info(f"Synced {len(synced)} slash command(s)")
-    except Exception as e:
-        logger.error(f"Failed to sync: {e}")
+
+    # Sync แค่ครั้งแรกเท่านั้น ไม่ sync ซ้ำ
+    if not _synced:
+        try:
+            synced = await tree.sync()
+            logger.info(f"Synced {len(synced)} slash command(s)")
+            _synced = True
+        except discord.HTTPException as e:
+            if e.status == 429:
+                logger.warning("Rate limited by Discord, skipping sync. Will retry next restart.")
+            else:
+                logger.error(f"Failed to sync: {e}")
 
     bot.add_view(SongListView(bot))
     await refresh_song_channel(bot)
