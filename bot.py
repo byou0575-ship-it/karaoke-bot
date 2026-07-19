@@ -71,7 +71,6 @@ def run_flask():
 # ──────────────────────────────────────────────
 
 def upload_audio_to_roblox(file_path: str, name: str) -> str | None:
-    """อัปโหลดไฟล์เสียงไป Roblox ผ่าน Open Cloud API"""
     if not ROBLOX_API_KEY or not ROBLOX_USER_ID:
         logger.warning("ROBLOX_API_KEY or ROBLOX_USER_ID not set")
         return None
@@ -1038,7 +1037,7 @@ async def clear_error(interaction: discord.Interaction, error):
         await interaction.response.send_message("⛔ ต้องมีสิทธิ์ Manage Messages", ephemeral=True)
 
 # ──────────────────────────────────────────────
-# Run
+# Run (แก้ไขสำคัญ!)
 # ──────────────────────────────────────────────
 
 async def main():
@@ -1046,23 +1045,37 @@ async def main():
         logger.error("DISCORD_BOT_TOKEN not set.")
         raise SystemExit(1)
 
-    logger.info("Waiting 30 seconds before Discord login to avoid rate limits...")
-    await asyncio.sleep(30)
+    # รอ 60 วินาทีก่อน login (ป้องกัน rate limit ตอน deploy)
+    logger.info("Waiting 60 seconds before Discord login to avoid rate limits...")
+    await asyncio.sleep(60)
 
+    # รัน Flask ใน thread แยก
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
     logger.info(f"Flask server started on port {os.environ.get('PORT', 10000)}")
 
+    # ใช้ reconnect=True และ handle rate limit อย่างระมัดระวัง
     async with bot:
-        try:
-            await bot.start(TOKEN, reconnect=True)
-        except discord.HTTPException as e:
-            if e.status == 429:
-                logger.error(f"Rate limited on startup: {e}")
-                await asyncio.sleep(60)
+        retry_count = 0
+        max_retries = 3
+        
+        while retry_count < max_retries:
+            try:
                 await bot.start(TOKEN, reconnect=True)
-            else:
-                raise
+                break  # ถ้าสำเร็จให้ออกจาก loop
+            except discord.HTTPException as e:
+                if e.status == 429:
+                    wait_time = min(300, 60 * (2 ** retry_count))  # 60, 120, 240 วินาที
+                    logger.error(f"Rate limited on startup (attempt {retry_count + 1}/{max_retries}): {e}")
+                    logger.info(f"Waiting {wait_time} seconds before retry...")
+                    await asyncio.sleep(wait_time)
+                    retry_count += 1
+                else:
+                    raise
+        
+        if retry_count >= max_retries:
+            logger.error("Max retries exceeded. Bot failed to start.")
+            raise SystemExit(1)
 
 if __name__ == "__main__":
     asyncio.run(main())
