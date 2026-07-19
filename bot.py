@@ -49,6 +49,17 @@ def home():
 def health():
     return {"status": "ok", "bot": str(bot.user) if bot.user else "offline"}, 200
 
+@app.route("/api/songs")
+def api_songs():
+    """API สำหรับ Roblox ดึงข้อมูลเพลง"""
+    songs = load_songs()
+    return songs, 200, {"Content-Type": "application/json"}
+
+@app.route("/api/queue")
+def api_queue():
+    """API สำหรับดูคิวปัจจุบัน"""
+    return load_queue(), 200, {"Content-Type": "application/json"}
+
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port, threaded=True)
@@ -293,7 +304,6 @@ def build_song_list_embeds(songs: dict) -> list[discord.Embed]:
     pages = math.ceil(len(items) / SONGS_PER_PAGE)
     embeds = []
 
-    # Cache ratings ครั้งเดียว ไม่ต้อง load ซ้ำ
     ratings = load_ratings()
 
     for page in range(pages):
@@ -363,7 +373,6 @@ async def refresh_song_channel(client: discord.Client) -> None:
                 msg = await channel.fetch_message(int(mid))
                 await msg.edit(embed=embeds[i], view=view if i == 0 else None)
                 edited.append(mid)
-                # Rate limit protection: หน่วง 0.5 วินาทีระหว่าง edit
                 if i < len(message_ids) - 1:
                     await asyncio.sleep(0.5)
             except (discord.NotFound, discord.HTTPException):
@@ -375,7 +384,6 @@ async def refresh_song_channel(client: discord.Client) -> None:
             try:
                 msg = await channel.send(embed=embed, view=view if i == 0 else None)
                 new_ids.append(msg.id)
-                # Rate limit protection
                 if i < len(embeds) - 1:
                     await asyncio.sleep(1.0)
             except discord.HTTPException as e:
@@ -423,7 +431,6 @@ async def on_ready():
         activity=discord.Activity(type=discord.ActivityType.listening, name="/karaoke auto")
     )
 
-    # Sync แค่ครั้งแรก พร้อม exponential backoff
     if not _synced and _sync_retry_count < MAX_SYNC_RETRIES:
         for attempt in range(MAX_SYNC_RETRIES):
             try:
@@ -433,7 +440,7 @@ async def on_ready():
                 break
             except discord.HTTPException as e:
                 if e.status == 429:
-                    wait_time = 2 ** attempt  # 1, 2, 4, 8, 16 วินาที
+                    wait_time = 2 ** attempt
                     logger.warning(f"Rate limited by Discord (sync), waiting {wait_time}s... (attempt {attempt + 1}/{MAX_SYNC_RETRIES})")
                     await asyncio.sleep(wait_time)
                     _sync_retry_count += 1
@@ -587,7 +594,6 @@ async def karaoke_auto(
     songs = load_songs()
     auto_artist = artist or extract_artist_from_url(url)
 
-    # กันซ้ำตามชื่อ
     if name:
         dup = find_duplicate_song(songs, name)
         if dup:
@@ -598,7 +604,6 @@ async def karaoke_auto(
             )
             return
 
-    # แปลง Roblox ID
     roblox_id = extract_roblox_id(url)
     if roblox_id:
         song_id = roblox_id
@@ -607,7 +612,6 @@ async def karaoke_auto(
         song_id = hashlib.md5(url.encode()).hexdigest()[:12]
         song_name = name or f"เพลงจาก URL"
 
-    # กันซ้ำตาม ID
     if song_id in songs:
         await interaction.followup.send(
             f"⚠️ เพลงนี้มีอยู่แล้ว (ID: `{song_id}`)\nชื่อ: **{songs[song_id]['SongName']}**\n"
@@ -615,7 +619,6 @@ async def karaoke_auto(
         )
         return
 
-    # ดาวน์โหลดปก
     cover_path = None
     if cover_url:
         cover_path = download_cover(cover_url, song_id)
@@ -757,7 +760,7 @@ async def karaoke_info(interaction: discord.Interaction, song_id: str):
     e.add_field(name="🗂️ หมวดหมู่", value=s.get("Category", "pop").upper(), inline=True)
     e.add_field(name="⭐ คะแนน", value=str(likes), inline=True)
     e.add_field(name="➕ เพิ่มโดย", value=s.get("AddedBy", "?"), inline=True)
-    e.add_field(name="📅 เพิ่มเมื่อ", value=s.get("AddedAt", "ไม่ระบุ")[:10], inline=True)
+    e.add_field(name="📅 เพิ่กเมื่อ", value=s.get("AddedAt", "ไม่ระบุ")[:10], inline=True)
     if s.get("SourceUrl"):
         e.add_field(name="🔗 ลิงก์", value=s["SourceUrl"], inline=False)
     await interaction.response.send_message(embed=e)
@@ -1028,7 +1031,7 @@ async def clear_error(interaction: discord.Interaction, error):
         await interaction.response.send_message("⛔ ต้องมีสิทธิ์ Manage Messages", ephemeral=True)
 
 # ──────────────────────────────────────────────
-# Run
+# Run (แก้ไขสำคัญ: ใช้ reconnect=True + รอนานขึ้น)
 # ──────────────────────────────────────────────
 
 async def main():
@@ -1036,17 +1039,27 @@ async def main():
         logger.error("DISCORD_BOT_TOKEN not set.")
         raise SystemExit(1)
 
-    # รอ 10 วินาทีก่อน login (ป้องกัน rate limit ตอน deploy)
-    logger.info("Waiting 10 seconds before Discord login to avoid rate limits...")
-    await asyncio.sleep(10)
+    # รอ 30 วินาทีก่อน login (ป้องกัน rate limit ตอน deploy)
+    logger.info("Waiting 30 seconds before Discord login to avoid rate limits...")
+    await asyncio.sleep(30)
 
-    # รัน Flask ใน thread แยก (สำหรับ Render port binding)
+    # รัน Flask ใน thread แยก
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
     logger.info(f"Flask server started on port {os.environ.get('PORT', 10000)}")
 
+    # ใช้ reconnect=True และ handle rate limit อย่างระมัดระวัง
     async with bot:
-        await bot.start(TOKEN)
+        try:
+            await bot.start(TOKEN, reconnect=True)
+        except discord.HTTPException as e:
+            if e.status == 429:
+                logger.error(f"Rate limited on startup: {e}")
+                # รอ 60 วินาทีแล้วลองใหม่
+                await asyncio.sleep(60)
+                await bot.start(TOKEN, reconnect=True)
+            else:
+                raise
 
 if __name__ == "__main__":
     asyncio.run(main())
