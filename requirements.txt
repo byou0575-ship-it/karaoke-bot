@@ -1,3 +1,4 @@
-discord.py
-flask
-PyNaCl
+discord.py>=2.3.0
+flask>=3.0.0
+gunicorn>=21.0.0
+PyNaCl>=1.5.0
