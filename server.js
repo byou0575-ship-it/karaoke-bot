@@ -4,7 +4,7 @@ const axios = require('axios');
 require('dotenv').config();
 
 const token = process.env.DISCORD_BOT_TOKEN;
-const YOUTUBE_API_KEY = "AIzaSyA_zb2Cv7X4aIaOyirJFNcrsuAbVf4JGqo"; // ใส่ Key ของคุณ (ถ้าหมดโควต้า ต้องเปลี่ยน!)
+const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY; // 🔑 ไปใส่ในหน้า Render เท่านั้น!
 const ROBLOX_API_KEY = process.env.ROBLOX_API_KEY;
 const ROBLOX_USER_ID = process.env.ROBLOX_USER_ID;
 
@@ -79,7 +79,7 @@ async function getVideoDetails(videoId) {
         });
         if (response.data.items && response.data.items.length > 0) {
             const item = response.data.items[0];
-            const durationISO = item.contentDetails.duration; // เช่น PT3M30S
+            const durationISO = item.contentDetails.duration;
             const duration = parseISODuration(durationISO);
             return {
                 id: item.id,
@@ -107,10 +107,9 @@ function parseISODuration(iso) {
     return hours * 3600 + minutes * 60 + seconds;
 }
 
-// ★★★ ฟังก์ชันเพิ่มเพลง (ค้นหา API + ตรวจ + บันทึก) ★★★
+// ★★★ ฟังก์ชันเพิ่มเพลง ★★★
 async function addSongFromYouTube(query) {
     try {
-        // 1. ค้นหาผ่าน YouTube Data API
         const items = await searchYouTube(query, 'video');
         if (!items || items.length === 0) return 'failed';
 
@@ -120,10 +119,8 @@ async function addSongFromYouTube(query) {
 
         const title = details.title;
         const artist = details.artist;
-
         if (isBanned(title, artist)) return 'banned';
 
-        // 2. บันทึกเพลง
         songs[videoId] = {
             id: videoId,
             title: title,
@@ -131,7 +128,7 @@ async function addSongFromYouTube(query) {
             url: `https://www.youtube.com/watch?v=${videoId}`,
             duration: details.duration,
             thumbnail: details.thumbnail,
-            robloxAssetId: null // ยังไม่มี ID
+            robloxAssetId: null
         };
         await refreshMessage();
         return 'success';
@@ -141,12 +138,11 @@ async function addSongFromYouTube(query) {
     }
 }
 
-// ★★★ ฟังก์ชันค้นหาศิลปินทั้งหมด (แบบค้นหาวิดีโอตรงๆ) ★★★
+// ★★★ ฟังก์ชันค้นหาศิลปินทั้งหมด ★★★
 async function syncArtistSongs(artistName, interaction) {
     const startTime = Date.now();
     try {
-        // ค้นหาวิดีโอทั้งหมดจากคำค้นหาที่ใส่
-        const videoItems = await searchYouTube(artistName, 'video'); // ไม่ต้องหาช่องแล้ว!
+        const videoItems = await searchYouTube(artistName, 'video');
         const totalVideos = videoItems.length;
         const added = [];
         const banned = [];
@@ -157,7 +153,6 @@ async function syncArtistSongs(artistName, interaction) {
             return;
         }
 
-        // เริ่มโหลดทีละเพลง (5 วิ/เพลง)
         for (let i = 0; i < videoItems.length; i++) {
             const item = videoItems[i];
             const videoId = item.id.videoId;
@@ -196,7 +191,6 @@ async function syncArtistSongs(artistName, interaction) {
             await new Promise(resolve => setTimeout(resolve, 5000));
         }
 
-        // สรุปผล
         const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
         const addedList = added.map(s => `- **${s.snippet.title}** (🎤 ${s.snippet.channelTitle})`).join('\n') || 'ไม่มีเพลงที่เพิ่ม';
 
