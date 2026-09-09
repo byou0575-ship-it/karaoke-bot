@@ -4,7 +4,7 @@ const axios = require('axios');
 require('dotenv').config();
 
 const token = process.env.DISCORD_BOT_TOKEN;
-const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
+const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY; // ต้องใส่ในหน้า Render เท่านั้น!
 const ROBLOX_API_KEY = process.env.ROBLOX_API_KEY;
 const ROBLOX_USER_ID = process.env.ROBLOX_USER_ID;
 
@@ -46,7 +46,7 @@ function fmtDuration(secs) {
     return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-// ★★★ ฟังก์ชันค้นหาผ่าน YouTube Data API (ใช้ search อย่างเดียว) ★★★
+// ★★★ ฟังก์ชันค้นหาผ่าน YouTube Data API (ต้องมี Key ที่ถูกต้อง) ★★★
 async function searchYouTube(query) {
     try {
         const response = await axios.get('https://www.googleapis.com/youtube/v3/search', {
@@ -61,12 +61,16 @@ async function searchYouTube(query) {
         });
         return response.data.items || [];
     } catch (error) {
+        // แจ้งเตือนผู้ดูแลทันทีว่า Key ไม่ถูกต้อง
         console.error('Error searching YouTube API:', error.message);
+        if (error.response && error.response.status === 403) {
+            console.error('❌ YOUTUBE_API_KEY ถูกปฏิเสธ! กรุณาไป Enable YouTube Data API v3 และสร้าง Key ใหม่');
+        }
         return [];
     }
 }
 
-// ดึงข้อมูลวิดีโอจาก search endpoint (ไม่ต้องพึ่ง Videos endpoint)
+// ดึงข้อมูลวิดีโอจาก search endpoint
 function parseVideoFromSearch(item) {
     if (!item || !item.id || !item.id.videoId) return null;
     return {
@@ -75,7 +79,7 @@ function parseVideoFromSearch(item) {
         artist: item.snippet.channelTitle,
         url: `https://www.youtube.com/watch?v=${item.id.videoId}`,
         thumbnail: item.snippet.thumbnails.high.url,
-        duration: 0, // Search API ไม่มีเวลา ต้องพึ่ง Videos endpoint แต่ถูกบล็อก เลยตัดทิ้ง
+        duration: 0,
         robloxAssetId: null
     };
 }
@@ -102,7 +106,7 @@ async function addSongFromYouTube(query) {
     }
 }
 
-// ★★★ ฟังก์ชันค้นหาศิลปินทั้งหมด (ใช้ Search API) ★★★
+// ★★★ ฟังก์ชันค้นหาศิลปินทั้งหมด ★★★
 async function syncArtistSongs(artistName, interaction) {
     const startTime = Date.now();
     try {
@@ -203,7 +207,9 @@ async function refreshMessage() {
 
 client.once('ready', async () => {
     console.log(`Logged in as ${client.user.tag}!`);
-    if (!YOUTUBE_API_KEY) console.log('⚠️ YOUTUBE_API_KEY not set! Bot will not work.');
+    if (!YOUTUBE_API_KEY) {
+        console.log('⚠️ YOUTUBE_API_KEY not set! Bot will not work.');
+    }
 
     const commands = [
         new SlashCommandBuilder().setName('ตั้งค่า').setDescription('ตั้งค่าช่องสำหรับแสดงรายการเพลง'),
