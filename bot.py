@@ -69,14 +69,13 @@ def run_flask():
     app.run(host="0.0.0.0", port=port, threaded=True)
 
 # ──────────────────────────────────────────────
-# YouTube + yt-dlp Functions (แก้ไขใหม่ให้เวิร์คบน Render)
+# YouTube + yt-dlp Functions
 # ──────────────────────────────────────────────
 
 def setup_dependencies():
-    """ติดตั้ง/อัปเดต yt-dlp อัตโนมัติ และเช็ค ffmpeg"""
+    """อัปเดต yt-dlp และติดตั้ง ffmpeg"""
     try:
-        subprocess.run([sys.executable, "-m", "pip", "install", "-U", "yt-dlp"], 
-                       capture_output=True, timeout=60)
+        subprocess.run([sys.executable, "-m", "pip", "install", "-U", "yt-dlp"], capture_output=True, timeout=60)
         if not os.system("which ffmpeg") == 0:
             logger.warning("ffmpeg not found, attempting install via apt...")
             subprocess.run(["apt-get", "update"], capture_output=True)
@@ -88,13 +87,14 @@ def setup_dependencies():
 setup_dependencies()
 
 def get_cookies_file():
-    """หาไฟล์ cookies.txt ในโฟลเดอร์ (ถ้ามี) เพื่อช่วยเลี่ยงบอทแคปชา"""
+    """ค้นหาไฟล์ cookies.txt ในโฟลเดอร์"""
     for f in os.listdir("."):
         if f.startswith("cookies") and f.endswith(".txt"):
             return os.path.join(".", f)
     return None
 
 def _try_ytdlp_info(url: str) -> dict | None:
+    """ดึงข้อมูล YouTube ด้วย yt-dlp (ตัดตัวกรองที่ทำให้พังออก)"""
     try:
         import yt_dlp
         cookies_file = get_cookies_file()
@@ -105,11 +105,14 @@ def _try_ytdlp_info(url: str) -> dict | None:
             'geo_bypass': True,
             'nocheckcertificate': True,
             'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'extractor_args': {'youtube': {'skip': ['hls', 'dash']}},
-            'http_headers': {'Accept-Language': 'en-US,en;q=0.9', 'Referer': 'https://www.youtube.com/'}
+            'http_headers': {
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Referer': 'https://www.youtube.com/'
+            }
         }
         if cookies_file:
             ydl_opts['cookiefile'] = cookies_file
+        
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             info["extractor"] = "yt-dlp"
@@ -119,11 +122,18 @@ def _try_ytdlp_info(url: str) -> dict | None:
         return None
 
 def _try_cobalt_api(url: str) -> dict | None:
+    """Fallback ไปใช้ Cobalt API v6 (ต้องมี API Key)"""
     try:
+        headers = {
+            "Accept": "application/json", 
+            "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0"
+        }
+        # ใช้ endpoint ใหม่
         response = requests.post(
             "https://api.cobalt.tools/",
             json={"url": url, "downloadMode": "audio"},
-            headers={"Accept": "application/json", "Content-Type": "application/json"},
+            headers=headers,
             timeout=15
         )
         data = response.json()
@@ -131,7 +141,16 @@ def _try_cobalt_api(url: str) -> dict | None:
             audio_url = data.get("url") or data.get("audio", "")
             filename = data.get("filename", "Unknown")
             title = filename if filename != "Unknown" else _extract_title_from_url(url)
-            return {"id": _extract_video_id(url), "title": title, "uploader": "Unknown", "duration": 0, "thumbnail": f"https://img.youtube.com/vi/{_extract_video_id(url)}/maxresdefault.jpg", "original_url": url, "cobalt_audio_url": audio_url, "extractor": "cobalt"}
+            return {
+                "id": _extract_video_id(url),
+                "title": title,
+                "uploader": "Unknown",
+                "duration": 0,
+                "thumbnail": f"https://img.youtube.com/vi/{_extract_video_id(url)}/maxresdefault.jpg",
+                "original_url": url,
+                "cobalt_audio_url": audio_url,
+                "extractor": "cobalt"
+            }
         else:
             return None
     except Exception as e:
@@ -139,6 +158,7 @@ def _try_cobalt_api(url: str) -> dict | None:
         return None
 
 def download_youtube_info(url: str) -> dict | None:
+    """ใช้ yt-dlp ก่อน ถ้าล้มเหลวค่อยใช้ Cobalt"""
     result = _try_ytdlp_info(url)
     if result:
         return result
@@ -146,6 +166,7 @@ def download_youtube_info(url: str) -> dict | None:
     return _try_cobalt_api(url)
 
 def download_youtube_audio(url: str, output_path: str) -> bool:
+    """ดาวน์โหลดเสียง"""
     if _download_via_ytdlp(url, output_path):
         return True
     logger.warning("yt-dlp download failed, trying Cobalt download...")
@@ -161,7 +182,6 @@ def _download_via_ytdlp(url: str, output_path: str) -> bool:
             'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}],
             'quiet': True, 'no_warnings': True, 'geo_bypass': True, 'nocheckcertificate': True,
             'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'extractor_args': {'youtube': {'skip': ['hls', 'dash']}},
             'http_headers': {'Accept-Language': 'en-US,en;q=0.9', 'Referer': 'https://www.youtube.com/'}
         }
         if cookies_file:
@@ -175,7 +195,8 @@ def _download_via_ytdlp(url: str, output_path: str) -> bool:
 
 def _download_via_cobalt(url: str, output_path: str) -> bool:
     try:
-        response = requests.post("https://api.cobalt.tools/", json={"url": url, "downloadMode": "audio"}, headers={"Accept": "application/json", "Content-Type": "application/json"}, timeout=30)
+        headers = {"Accept": "application/json", "Content-Type": "application/json", "User-Agent": "Mozilla/5.0"}
+        response = requests.post("https://api.cobalt.tools/", json={"url": url, "downloadMode": "audio"}, headers=headers, timeout=30)
         data = response.json()
         if data.get("status") != "tunnel" and data.get("status") != "picker": return False
         audio_url = data.get("url") or data.get("audio", "")
@@ -240,8 +261,8 @@ _ratings_cache = None; _ratings_mtime = 0
 def load_songs() -> dict:
     global _songs_cache, _songs_mtime
     try:
- m        mtime = os.path.getmtime(SONGS_FILE)
-       time if _songs_cache is not None and mtime == _songs_mtime: return _songs_cache
+        mtime = os.path.getmtime(SONGS_FILE)
+        if _songs_cache is not None and mtime == _songs_mtime: return _songs_cache
     except OSError: return {}
     if not os.path.exists(SONGS_FILE): return {}
     with open(SONGS_FILE, "r", encoding="utf-8") as f: _songs_cache = json.load(f)
@@ -256,7 +277,7 @@ def save_songs(songs: dict) -> None:
 def load_config() -> dict:
     global _config_cache, _config_mtime
     try:
-        = os.path.getmtime(CONFIG_FILE)
+        mtime = os.path.getmtime(CONFIG_FILE)
         if _config_cache is not None and mtime == _config_mtime: return _config_cache
     except OSError: return {}
     if not os.path.exists(CONFIG_FILE): return {}
