@@ -4,7 +4,7 @@ const axios = require('axios');
 require('dotenv').config();
 
 const token = process.env.DISCORD_BOT_TOKEN;
-const YOUTUBE_API_KEY = "AIzaSyA_zb2Cv7X4aIaOyirJFNcrsuAbVf4JGqo"; // ✅ ใส่ API Key ของคุณแล้ว
+const YOUTUBE_API_KEY = "AIzaSyA_zb2Cv7X4aIaOyirJFNcrsuAbVf4JGqo"; // ใส่ Key ของคุณ (ถ้าหมดโควต้า ต้องเปลี่ยน!)
 const ROBLOX_API_KEY = process.env.ROBLOX_API_KEY;
 const ROBLOX_USER_ID = process.env.ROBLOX_USER_ID;
 
@@ -141,20 +141,12 @@ async function addSongFromYouTube(query) {
     }
 }
 
-// ★★★ ฟังก์ชันค้นหาศิลปินทั้งหมด ★★★
+// ★★★ ฟังก์ชันค้นหาศิลปินทั้งหมด (แบบค้นหาวิดีโอตรงๆ) ★★★
 async function syncArtistSongs(artistName, interaction) {
     const startTime = Date.now();
     try {
-        // ค้นหาช่องศิลปิน
-        const channelItems = await searchYouTube(artistName, 'channel');
-        if (!channelItems || channelItems.length === 0) {
-            await interaction.editReply({ embeds: [new EmbedBuilder().setDescription(`❌ **ไม่พบช่องของ ${artistName}!**`).setColor(0xe74c3c)] });
-            return;
-        }
-
-        // ค้นหาเพลงทั้งหมดจากช่องนั้น
-        const channelId = channelItems[0].id.channelId;
-        const videoItems = await searchYouTube(`channel:${channelId}`, 'video');
+        // ค้นหาวิดีโอทั้งหมดจากคำค้นหาที่ใส่
+        const videoItems = await searchYouTube(artistName, 'video'); // ไม่ต้องหาช่องแล้ว!
         const totalVideos = videoItems.length;
         const added = [];
         const banned = [];
