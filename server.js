@@ -1,11 +1,13 @@
 const { Client, GatewayIntentBits, EmbedBuilder, SlashCommandBuilder } = require('discord.js');
-const path = require('path');
-const fs = require('fs');
 const express = require('express');
 const axios = require('axios');
 require('dotenv').config();
 
 const token = process.env.DISCORD_BOT_TOKEN;
+const YOUTUBE_API_KEY = "AIzaSyA_zb2Cv7X4aIaOyirJFNcrsuAbVf4JGqo"; // ✅ ใส่ API Key ของคุณแล้ว
+const ROBLOX_API_KEY = process.env.ROBLOX_API_KEY;
+const ROBLOX_USER_ID = process.env.ROBLOX_USER_ID;
+
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
 
 // Express Server
@@ -17,10 +19,6 @@ const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
     console.log(`Web server running on port ${PORT}`);
 });
-
-// Roblox Config
-const ROBLOX_API_KEY = process.env.ROBLOX_API_KEY;
-const ROBLOX_USER_ID = process.env.ROBLOX_USER_ID;
 
 let songs = {};
 let autoTask = null;
@@ -48,129 +46,97 @@ function fmtDuration(secs) {
     return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-// ★★★ GD Studio Music API Functions ★★★
-const API_BASE = "https://music-api.gdstudio.xyz/api.php";
-
-async function searchSongs(query, source = 'joox', count = 15) {
+// ★★★ ฟังก์ชันค้นหาผ่าน YouTube Data API ★★★
+async function searchYouTube(query, type = 'video') {
     try {
-        const response = await axios.get(API_BASE, {
+        const response = await axios.get('https://www.googleapis.com/youtube/v3/search', {
             params: {
-                types: 'search',
-                source: source,
-                name: query,
-                count: count
+                part: 'snippet',
+                q: query,
+                type: type,
+                maxResults: 10,
+                key: YOUTUBE_API_KEY
             },
             timeout: 15000
         });
-        return response.data;
+        return response.data.items || [];
     } catch (error) {
-        console.error('Error searching songs via API:', error);
+        console.error('Error searching YouTube API:', error.message);
         return [];
     }
 }
 
-// ดึง URL ดาวน์โหลด MP3
-async function getDownloadUrl(songId) {
+// ดึงรายละเอียดเพลง (ID, ชื่อ, ศิลปิน, เวลา, ปก) จาก Video ID
+async function getVideoDetails(videoId) {
     try {
-        const response = await axios.get(API_BASE, {
+        const response = await axios.get('https://www.googleapis.com/youtube/v3/videos', {
             params: {
-                types: 'url',
-                source: 'joox',
-                id: songId,
-                quality: '128'
+                part: 'snippet,contentDetails',
+                id: videoId,
+                key: YOUTUBE_API_KEY
             },
             timeout: 15000
         });
-        return response.data.url || response.data;
+        if (response.data.items && response.data.items.length > 0) {
+            const item = response.data.items[0];
+            const durationISO = item.contentDetails.duration; // เช่น PT3M30S
+            const duration = parseISODuration(durationISO);
+            return {
+                id: item.id,
+                title: item.snippet.title,
+                artist: item.snippet.channelTitle,
+                duration: duration,
+                thumbnail: item.snippet.thumbnails.high.url
+            };
+        }
+        return null;
     } catch (error) {
-        console.error('Error getting download URL:', error);
+        console.error('Error getting video details:', error.message);
         return null;
     }
 }
 
-// ★★★ ฟังก์ชันดาวน์โหลด + อัปโหลด Roblox ★★★
-async function addSongFromAPI(query, interaction = null) {
-    try {
-        // 1. ค้นหาเพลง
-        const results = await searchSongs(query);
-        if (!results || results.length === 0) return 'failed';
+// แปลงเวลา ISO 8601 เป็นวินาที
+function parseISODuration(iso) {
+    const regex = /PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/;
+    const matches = iso.match(regex);
+    if (!matches) return 0;
+    const hours = parseInt(matches[1] || 0);
+    const minutes = parseInt(matches[2] || 0);
+    const seconds = parseInt(matches[3] || 0);
+    return hours * 3600 + minutes * 60 + seconds;
+}
 
-        const song = results[0];
-        const title = song.title || 'Unknown';
-        const artist = song.singer || song.artist || 'Unknown';
-        const songId = song.id || song.songId || null;
+// ★★★ ฟังก์ชันเพิ่มเพลง (ค้นหา API + ตรวจ + บันทึก) ★★★
+async function addSongFromYouTube(query) {
+    try {
+        // 1. ค้นหาผ่าน YouTube Data API
+        const items = await searchYouTube(query, 'video');
+        if (!items || items.length === 0) return 'failed';
+
+        const videoId = items[0].id.videoId;
+        const details = await getVideoDetails(videoId);
+        if (!details) return 'failed';
+
+        const title = details.title;
+        const artist = details.artist;
 
         if (isBanned(title, artist)) return 'banned';
-        if (!songId) return 'failed';
 
-        // 2. ดึง URL ดาวน์โหลด
-        const downloadUrl = await getDownloadUrl(songId);
-        if (!downloadUrl) return 'failed';
-
-        // 3. ดาวน์โหลดไฟล์เสียง
-        const tempDir = path.join(__dirname, 'temp_audio');
-        if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir);
-        const outputPath = path.join(tempDir, `${songId}.mp3`);
-
-        const fileResponse = await axios.get(downloadUrl, { responseType: 'stream', timeout: 60000 });
-        const writer = fs.createWriteStream(outputPath);
-        fileResponse.data.pipe(writer);
-        await new Promise((resolve, reject) => {
-            writer.on('finish', resolve);
-            writer.on('error', reject);
-        });
-
-        // 4. อัปโหลดขึ้น Roblox อัตโนมัติ
-        let assetId = null;
-        if (ROBLOX_API_KEY && ROBLOX_USER_ID) {
-            const fileBuffer = fs.readFileSync(outputPath);
-            const fileSize = fileBuffer.length;
-
-            if (fileSize <= 20 * 1024 * 1024) {
-                try {
-                    const payload = {
-                        "assetType": "Audio",
-                        "displayName": title.slice(0, 50),
-                        "description": `Karaoke: ${title} โดย ${artist}`,
-                        "creationContext": {
-                            "creator": {
-                                "userId": parseInt(ROBLOX_USER_ID)
-                            }
-                        }
-                    };
-
-                    const formData = new FormData();
-                    formData.append('request', JSON.stringify(payload));
-                    formData.append('fileContent', new Blob([fileBuffer], { type: 'audio/mpeg' }), `${songId}.mp3`);
-
-                    const robResponse = await fetch("https://apis.roblox.com/assets/v1/assets", {
-                        method: 'POST',
-                        headers: { 'x-api-key': ROBLOX_API_KEY },
-                        body: formData
-                    });
-
-                    const robData = await robResponse.json();
-                    assetId = robData.assetId ? String(robData.assetId) : null;
-                } catch (e) {
-                    console.error('Roblox upload error:', e);
-                }
-            }
-        }
-
-        // 5. บันทึกเพลงลงระบบ
-        songs[songId] = {
-            id: songId,
+        // 2. บันทึกเพลง
+        songs[videoId] = {
+            id: videoId,
             title: title,
             artist: artist,
-            url: downloadUrl,
-            duration: song.duration || 0,
-            thumbnail: song.pic || song.img || null,
-            robloxAssetId: assetId
+            url: `https://www.youtube.com/watch?v=${videoId}`,
+            duration: details.duration,
+            thumbnail: details.thumbnail,
+            robloxAssetId: null // ยังไม่มี ID
         };
         await refreshMessage();
         return 'success';
     } catch (error) {
-        console.error('Error in addSongFromAPI:', error);
+        console.error('Error in addSongFromYouTube:', error.message);
         return 'failed';
     }
 }
@@ -179,50 +145,60 @@ async function addSongFromAPI(query, interaction = null) {
 async function syncArtistSongs(artistName, interaction) {
     const startTime = Date.now();
     try {
-        const results = await searchSongs(artistName, 'joox', 50);
-        const totalSongs = results.length;
+        // ค้นหาช่องศิลปิน
+        const channelItems = await searchYouTube(artistName, 'channel');
+        if (!channelItems || channelItems.length === 0) {
+            await interaction.editReply({ embeds: [new EmbedBuilder().setDescription(`❌ **ไม่พบช่องของ ${artistName}!**`).setColor(0xe74c3c)] });
+            return;
+        }
+
+        // ค้นหาเพลงทั้งหมดจากช่องนั้น
+        const channelId = channelItems[0].id.channelId;
+        const videoItems = await searchYouTube(`channel:${channelId}`, 'video');
+        const totalVideos = videoItems.length;
         const added = [];
         const banned = [];
         const failed = [];
 
-        if (totalSongs === 0) {
+        if (totalVideos === 0) {
             await interaction.editReply({ embeds: [new EmbedBuilder().setDescription(`❌ **ไม่พบเพลงของ ${artistName}!**`).setColor(0xe74c3c)] });
             return;
         }
 
         // เริ่มโหลดทีละเพลง (5 วิ/เพลง)
-        for (let i = 0; i < results.length; i++) {
-            const song = results[i];
+        for (let i = 0; i < videoItems.length; i++) {
+            const item = videoItems[i];
+            const videoId = item.id.videoId;
+            const title = item.snippet.title;
+            const channelTitle = item.snippet.channelTitle;
 
-            // บอกว่าเพลงที่เท่าไหร่กำลังโหลด
             await interaction.editReply({
                 embeds: [new EmbedBuilder()
-                    .setTitle(`⏳ กำลังโหลดเพลงที่ ${i + 1}/${totalSongs}`)
-                    .setDescription(`🎵 **${song.title || 'Unknown'}**`)
+                    .setTitle(`⏳ กำลังโหลดเพลงที่ ${i + 1}/${totalVideos}`)
+                    .setDescription(`🎵 **${title}**`)
                     .setColor(0xf1c40f)
-                    .setThumbnail(song.pic || '')
+                    .setThumbnail(item.snippet.thumbnails.high.url)
                 ]
             });
 
-            // เริ่มดึง (ตรวจคัดกรอง + ดึงไฟล์)
             const startTrack = Date.now();
-            const result = await addSongFromAPI(song.title + ' ' + (song.singer || ''), null);
+            const result = await addSongFromYouTube(videoId);
             const elapsed = ((Date.now() - startTrack) / 1000).toFixed(1);
 
             if (result === 'success') {
-                added.push(song);
+                added.push(item);
                 await interaction.editReply({
                     embeds: [new EmbedBuilder()
-                        .setTitle(`✅ เพลง ${i + 1}/${totalSongs} สำเร็จ!`)
-                        .setDescription(`🎵 **${song.title}**\n🎤 ${song.singer || 'Unknown'}\n\n⏱️ ใช้เวลา: **${elapsed} วินาที**`)
+                        .setTitle(`✅ เพลง ${i + 1}/${totalVideos} สำเร็จ!`)
+                        .setDescription(`🎵 **${title}**\n🎤 ${channelTitle}\n\n⏱️ ใช้เวลา: **${elapsed} วินาที**`)
                         .setColor(0x57F287)
-                        .setThumbnail(song.pic || '')
+                        .setThumbnail(item.snippet.thumbnails.high.url)
                     ]
                 });
             } else if (result === 'banned') {
-                banned.push(song);
+                banned.push(item);
             } else {
-                failed.push(song);
+                failed.push(item);
             }
 
             await new Promise(resolve => setTimeout(resolve, 5000));
@@ -230,7 +206,7 @@ async function syncArtistSongs(artistName, interaction) {
 
         // สรุปผล
         const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
-        const addedList = added.map(s => `- **${s.title}** (🎤 ${s.singer || 'Unknown'})`).join('\n') || 'ไม่มีเพลงที่เพิ่ม';
+        const addedList = added.map(s => `- **${s.snippet.title}** (🎤 ${s.snippet.channelTitle})`).join('\n') || 'ไม่มีเพลงที่เพิ่ม';
 
         await interaction.editReply({
             embeds: [new EmbedBuilder()
@@ -262,7 +238,7 @@ async function refreshMessage() {
 
     const embed = new EmbedBuilder()
         .setTitle('🎤 รายการเพลง Karaoke')
-        .setDescription(songList.length === 0 ? 'ยังไม่มีเพลงในคลัง' : songList.map(s => `**${s.title}**\n🎤 ${s.artist} · ⏱ ${fmtDuration(s.duration)} · \`${s.id}\`\n🟢 Roblox: ${s.robloxAssetId ? `✅ (${s.robloxAssetId})` : 'ยังไม่ทำ'}`).join('\n\n'))
+        .setDescription(songList.length === 0 ? 'ยังไม่มีเพลงในคลัง' : songList.map(s => `**${s.title}**\n🎤 ${s.artist} · ⏱ ${fmtDuration(s.duration)} · \`${s.id}\``).join('\n\n'))
         .setColor(0x000000)
         .setFooter({ text: `รวม ${songList.length} เพลง · ศิลปิน ${uniqueArtists} คน` });
 
@@ -278,11 +254,11 @@ async function refreshMessage() {
 
 client.once('ready', async () => {
     console.log(`Logged in as ${client.user.tag}!`);
-    if (ROBLOX_API_KEY && ROBLOX_USER_ID) console.log(`Roblox upload ready!`);
+    if (!YOUTUBE_API_KEY) console.log('⚠️ YOUTUBE_API_KEY not set! Bot will not work.');
 
     const commands = [
         new SlashCommandBuilder().setName('ตั้งค่า').setDescription('ตั้งค่าช่องสำหรับแสดงรายการเพลง'),
-        new SlashCommandBuilder().setName('หาเพลง').setDescription('ค้นหาและเพิ่มเพลงจาก Joox โดยใช้ชื่อเพลง').addStringOption(option => option.setName('ชื่อเพลง').setDescription('ชื่อเพลงหรือชื่อศิลปิน').setRequired(true)),
+        new SlashCommandBuilder().setName('หาเพลง').setDescription('ค้นหาและเพิ่มเพลงจาก YouTube').addStringOption(option => option.setName('ชื่อเพลง').setDescription('ชื่อเพลงหรือชื่อศิลปิน').setRequired(true)),
         new SlashCommandBuilder().setName('ศิลปิน').setDescription('ดึงเพลงทั้งหมดของศิลปินที่ระบุ').addStringOption(option => option.setName('ชื่อศิลปิน').setDescription('ชื่อศิลปิน').setRequired(true)),
         new SlashCommandBuilder().setName('เพลงฮิต').setDescription('ดึงเพลงยอดนิยม 10 อันดับแรก'),
         new SlashCommandBuilder().setName('เริ่มหาเพลง').setDescription('เริ่มระบบหาเพลงอัตโนมัติ'),
@@ -320,7 +296,7 @@ client.on('interactionCreate', async interaction => {
         await interaction.deferReply();
         await interaction.editReply({ embeds: [replyEmbed.setDescription(`⏳ **กำลังค้นหาเพลง:** ${query}...`)] });
         try {
-            const result = await addSongFromAPI(query);
+            const result = await addSongFromYouTube(query);
             if (result === 'success') {
                 const addedSong = songs[Object.keys(songs).pop()];
                 await interaction.editReply({
@@ -330,8 +306,7 @@ client.on('interactionCreate', async interaction => {
                         .addFields(
                             { name: '🎵 ชื่อเพลง', value: addedSong.title, inline: true },
                             { name: '🎤 ศิลปิน', value: addedSong.artist, inline: true },
-                            { name: '⏱️ ความยาว', value: fmtDuration(addedSong.duration), inline: true },
-                            { name: '🟢 Roblox', value: addedSong.robloxAssetId ? `อัปโหลดสำเร็จ (ID: ${addedSong.robloxAssetId})` : 'ยังไม่ได้อัปโหลด', inline: true }
+                            { name: '⏱️ ความยาว', value: fmtDuration(addedSong.duration), inline: true }
                         )
                     ]
                 });
@@ -358,33 +333,34 @@ client.on('interactionCreate', async interaction => {
         await interaction.editReply({ embeds: [new EmbedBuilder().setDescription('⏳ **กำลังดึงเพลงยอดนิยม...**').setColor(0xf1c40f)] });
         const startTime = Date.now();
         try {
-            const results = await searchSongs('เพลงไทย', 'joox', 10);
+            const items = await searchYouTube('เพลงไทย', 'video');
             const added = [];
             const banned = [];
 
-            for (let i = 0; i < results.length; i++) {
-                const song = results[i];
-                const startTrack = Date.now();
-                const result = await addSongFromAPI(song.title + ' ' + (song.singer || ''), null);
-                const elapsed = ((Date.now() - startTrack) / 1000).toFixed(1);
-
-                if (result === 'success') added.push(song);
-                if (result === 'banned') banned.push(song);
+            for (let i = 0; i < items.length; i++) {
+                const item = items[i];
+                const videoId = item.id.videoId;
+                const title = item.snippet.title;
+                const channelTitle = item.snippet.channelTitle;
 
                 await interaction.editReply({
                     embeds: [new EmbedBuilder()
-                        .setTitle(`✅ เพลง ${i + 1}/${results.length} สำเร็จ!`)
-                        .setDescription(`🎵 **${song.title}**\n🎤 ${song.singer || 'Unknown'}\n\n⏱️ ใช้เวลา: **${elapsed} วินาที**`)
+                        .setTitle(`✅ เพลง ${i + 1}/${items.length} สำเร็จ!`)
+                        .setDescription(`🎵 **${title}**\n🎤 ${channelTitle}`)
                         .setColor(0x57F287)
-                        .setThumbnail(song.pic || '')
+                        .setThumbnail(item.snippet.thumbnails.high.url)
                     ]
                 });
+
+                const result = await addSongFromYouTube(videoId);
+                if (result === 'success') added.push(item);
+                if (result === 'banned') banned.push(item);
 
                 await new Promise(resolve => setTimeout(resolve, 5000));
             }
 
             const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
-            const addedList = added.map(s => `- **${s.title}** (🎤 ${s.singer || 'Unknown'})`).join('\n') || 'ไม่มีเพลงที่เพิ่ม';
+            const addedList = added.map(s => `- **${s.snippet.title}** (🎤 ${s.snippet.channelTitle})`).join('\n') || 'ไม่มีเพลงที่เพิ่ม';
 
             await interaction.editReply({
                 embeds: [new EmbedBuilder()
@@ -411,9 +387,9 @@ client.on('interactionCreate', async interaction => {
         await interaction.reply({ embeds: [replyEmbed.setDescription('🚀 **เริ่มระบบหาเพลงอัตโนมัติแล้ว!**')] });
         autoTask = setInterval(async () => {
             try {
-                const results = await searchSongs('เพลงไทย', 'joox', 5);
-                if (results && results.length > 0) {
-                    await addSongFromAPI(results[0].title + ' ' + (results[0].singer || ''));
+                const items = await searchYouTube('เพลงไทย', 'video');
+                if (items && items.length > 0) {
+                    await addSongFromYouTube(items[0].id.videoId);
                 }
             } catch (error) {
                 console.error('Auto add error:', error);
