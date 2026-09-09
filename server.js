@@ -18,6 +18,21 @@ app.listen(PORT, () => {
     console.log(`Web server running on port ${PORT}`);
 });
 
+// หา Cookies
+function getCookiesPath() {
+    const possiblePaths = [
+        path.join(__dirname, 'cookies.txt'),
+        path.join(__dirname, 'cookies.txt.txt')
+    ];
+    for (const p of possiblePaths) {
+        if (fs.existsSync(p)) return p;
+    }
+    return null;
+}
+
+const cookiesPath = getCookiesPath();
+const hasCookies = cookiesPath !== null;
+
 let songs = {};
 let autoTask = null;
 let songChannelId = null;
@@ -44,31 +59,12 @@ function fmtDuration(secs) {
     return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-// ฟังก์ชันหาตำแหน่ง cookies.txt ที่ถูกต้อง
-function getCookiesPath() {
-    const possiblePaths = [
-        path.join(__dirname, 'cookies.txt'),
-        path.join(__dirname, 'cookies.txt.txt')
-    ];
-    for (const p of possiblePaths) {
-        if (fs.existsSync(p)) return p;
-    }
-    return null;
-}
-
-const cookiesPath = getCookiesPath();
-const hasCookies = cookiesPath !== null;
-
-// ฟังก์ชันหลัก: ค้นหาข้อมูล + เลือกฟอร์แมตเสียงที่ดีที่สุด
+// ฟังก์ชันหลัก
 async function getYtDlpOutput(url, args = {}) {
     try {
-        // ตั้งค่า Cookies (ถ้ามี)
         if (hasCookies) args.cookies = cookiesPath;
-        
-        // กันการขอฟอร์แมตที่ไม่ถูกต้อง (แก้ Error format not available)
         args.format = 'bestaudio[ext=m4a]/bestaudio/best';
         args.noWarnings = true;
-
         const output = await youtubedl(url, args);
         if (Array.isArray(output)) return output[0];
         return output;
@@ -78,12 +74,10 @@ async function getYtDlpOutput(url, args = {}) {
     }
 }
 
-// ฟังก์ชันดึงข้อมูลเพลง (ค้นหา)
 async function getTrackInfo(url) {
     return await getYtDlpOutput(url, { dumpJson: true, noPlaylist: true, skipDownload: true });
 }
 
-// ฟังก์ชันค้นหา URL จากคำค้น
 async function searchTrackUrl(query) {
     try {
         const output = await getYtDlpOutput(`ytsearch1:${query}`, { dumpJson: true, skipDownload: true });
@@ -95,7 +89,6 @@ async function searchTrackUrl(query) {
     }
 }
 
-// ฟังก์ชันค้นหาศิลปิน
 async function findArtistChannel(artistName) {
     try {
         const output = await getYtDlpOutput(`ytsearch1:${artistName}`, { dumpJson: true, skipDownload: true });
@@ -107,14 +100,12 @@ async function findArtistChannel(artistName) {
     }
 }
 
-// ฟังก์ชันเพิ่มเพลง (ค้นหา + ตรวจ + บันทึก)
 async function addSong(url) {
     const info = await getTrackInfo(url);
     if (info && info.id) {
         const title = info.title || 'Unknown';
         const artist = info.uploader || 'Unknown';
         if (isBanned(title, artist)) return 'banned';
-        
         songs[info.id] = {
             id: info.id,
             title: title,
@@ -129,7 +120,7 @@ async function addSong(url) {
     return 'failed';
 }
 
-// รีเฟรชข้อความสวยงาม
+// รีเฟรชข้อความสวยงาม (Black Premium)
 async function refreshMessage() {
     if (!songChannelId) return;
     const channel = client.channels.cache.get(songChannelId);
@@ -141,7 +132,7 @@ async function refreshMessage() {
     const embed = new EmbedBuilder()
         .setTitle('🎤 รายการเพลง Karaoke')
         .setDescription(songList.length === 0 ? 'ยังไม่มีเพลงในคลัง' : songList.map(s => `**${s.title}**\n🎤 ${s.artist} · ⏱ ${fmtDuration(s.duration)} · \`${s.id}\``).join('\n\n'))
-        .setColor(0x5865F2)
+        .setColor(0x000000)
         .setFooter({ text: `รวม ${songList.length} เพลง · ศิลปิน ${uniqueArtists} คน` });
 
     const existingMessages = await channel.messages.fetch({ limit: 5 }).catch(() => []);
@@ -184,7 +175,7 @@ client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
     const { commandName, options } = interaction;
-    const replyEmbed = new EmbedBuilder().setColor(0x5865F2);
+    const replyEmbed = new EmbedBuilder().setColor(0x000000);
 
     if (commandName === 'ตั้งค่า') {
         songChannelId = interaction.channelId;
@@ -205,12 +196,12 @@ client.on('interactionCreate', async interaction => {
                     const addedSong = songs[Object.keys(songs).pop()];
                     replyEmbed
                         .setTitle('✅ เพิ่มเพลงสำเร็จ!')
+                        .setThumbnail(addedSong.thumbnail)
                         .addFields(
                             { name: '🎵 ชื่อเพลง', value: addedSong.title, inline: true },
                             { name: '🎤 ศิลปิน', value: addedSong.artist, inline: true },
                             { name: '⏱️ ความยาว', value: fmtDuration(addedSong.duration), inline: true }
-                        )
-                        .setThumbnail(addedSong.thumbnail || null);
+                        );
                     await interaction.editReply({ embeds: [replyEmbed] });
                 } else if (addResult === 'banned') {
                     await interaction.editReply({ embeds: [replyEmbed.setDescription('⛔ **เพลงนี้มีเนื้อหาต้องห้าม** ไม่สามารถเพิ่มได้!')] });
@@ -229,7 +220,14 @@ client.on('interactionCreate', async interaction => {
     if (commandName === 'ศิลปิน') {
         const artist = options.getString('ชื่อศิลปิน');
         await interaction.deferReply();
-        await interaction.editReply({ embeds: [replyEmbed.setDescription(`🔍 **กำลังค้นหาช่องของศิลปิน:** ${artist}...`)] });
+        
+        // 1. เริ่มค้นหา
+        await interaction.editReply({
+            embeds: [replyEmbed
+                .setTitle(`🔍 กำลังค้นหาช่องของ: ${artist}`)
+                .setColor(0x000000)
+            ]
+        });
         const startTime = Date.now();
         try {
             const foundChannel = await findArtistChannel(artist);
@@ -252,15 +250,16 @@ client.on('interactionCreate', async interaction => {
             const totalVideos = videos.length;
             const failed = [];
 
+            // 2. เริ่มโหลดทีละเพลง (ส่ง Embed อัปเดตแบบ Real-time)
             for (let i = 0; i < videos.length; i++) {
                 const video = videos[i];
                 if (video && video.url) {
-                    // แสดง Progress ตอนกำลังโหลด
                     await interaction.editReply({
                         embeds: [replyEmbed
-                            .setTitle(`⏳ กำลังโหลดเพลงของ ${artist}...`)
-                            .setDescription(`กำลังโหลดเพลงที่ **${i + 1}/${totalVideos}**`)
+                            .setTitle(`⏳ กำลังโหลดเพลงที่ ${i + 1}/${totalVideos}`)
+                            .setDescription(`🎵 **${video.title || 'ไม่ทราบชื่อ'}**`)
                             .setColor(0xf1c40f)
+                            .setThumbnail(video.thumbnail || 'https://i.imgur.com/4rqM0lD.png')
                         ]
                     });
 
@@ -285,6 +284,7 @@ client.on('interactionCreate', async interaction => {
                 }
             }
 
+            // 3. สรุปผลตอนจบ
             const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
             const songListText = addedSongsInfo.map(s => `- **${s.title}** (🎤 ${s.artist})`).join('\n') || 'ไม่มีเพลงที่เพิ่ม';
             const failText = failed.length > 0 ? `\n❌ ดึงไม่สำเร็จ: ${failed.length} เพลง` : '';
@@ -297,7 +297,8 @@ client.on('interactionCreate', async interaction => {
                     { name: '⛔ ถูกคัดกรอง', value: `${banned.length} เพลง`, inline: true },
                     { name: '⏱️ เวลารวม', value: `${totalTime} วินาที`, inline: true }
                 )
-                .setColor(0x57F287);
+                .setColor(0x57F287)
+                .setThumbnail(foundChannel.thumbnail || 'https://i.imgur.com/4rqM0lD.png');
             await interaction.editReply({ embeds: [replyEmbed] });
         } catch (error) {
             console.error('Error syncing artist:', error);
@@ -319,11 +320,19 @@ client.on('interactionCreate', async interaction => {
             const added = [];
             const banned = [];
             const addedSongsInfo = [];
-            const failed = [];
 
             for (let i = 0; i < tracks.length; i++) {
                 const item = tracks[i];
                 if (item && item.url) {
+                    // บอกว่ากำลังโหลดเพลงไหน
+                    await interaction.editReply({
+                        embeds: [replyEmbed
+                            .setTitle(`⏳ กำลังโหลดเพลงที่ ${i + 1}/${tracks.length}`)
+                            .setDescription(`🎵 **${item.title || 'ไม่ทราบชื่อ'}**`)
+                            .setColor(0xf1c40f)
+                            .setThumbnail(item.thumbnail || 'https://i.imgur.com/4rqM0lD.png')
+                        ]
+                    });
                     const startPerTrack = Date.now();
                     const result = await addSong(item.url);
                     const elapsedPerTrack = ((Date.now() - startPerTrack) / 1000).toFixed(1);
@@ -335,9 +344,6 @@ client.on('interactionCreate', async interaction => {
                         console.log(`✅ ดึงเพลง: ${songInfo.title} ใช้เวลา ${elapsedPerTrack} วิ`);
                     } else if (result === 'banned') {
                         banned.push(item.url);
-                        console.log(`⛔ ถูกคัดกรอง: ${item.title}`);
-                    } else {
-                        failed.push(item.url);
                     }
                     await new Promise(resolve => setTimeout(resolve, 5000));
                 }
@@ -354,7 +360,8 @@ client.on('interactionCreate', async interaction => {
                     { name: '⛔ ถูกคัดกรอง', value: `${banned.length} เพลง`, inline: true },
                     { name: '⏱️ เวลารวม', value: `${totalTime} วินาที`, inline: true }
                 )
-                .setColor(0x57F287);
+                .setColor(0x57F287)
+                .setThumbnail('https://i.imgur.com/4rqM0lD.png');
             await interaction.editReply({ embeds: [replyEmbed] });
         } catch (error) {
             await interaction.editReply({ embeds: [replyEmbed.setDescription(`❌ **เกิดข้อผิดพลาด:** ${error.message}`)] });
@@ -425,7 +432,8 @@ client.on('interactionCreate', async interaction => {
                 { name: '🎵 ชื่อเพลง', value: randomSong.title, inline: true },
                 { name: '🎤 ศิลปิน', value: randomSong.artist, inline: true },
                 { name: '🆔 ID', value: randomSong.id, inline: true }
-            );
+            )
+            .setThumbnail(randomSong.thumbnail);
         await interaction.reply({ embeds: [replyEmbed] });
     }
 });
