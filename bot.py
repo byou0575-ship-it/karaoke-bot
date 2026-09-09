@@ -28,6 +28,9 @@ TOKEN       = os.environ.get("DISCORD_BOT_TOKEN")
 ROBLOX_API_KEY = os.environ.get("ROBLOX_API_KEY")
 ROBLOX_USER_ID = os.environ.get("ROBLOX_USER_ID")
 
+# ตั้งค่าเป้าหมายการค้นหาอัตโนมัติ (แก้ตรงนี้ได้เลย)
+AUTO_TARGET = "เพลงไทย"  # หรือ "Saran", "เพลงใหม่" ก็ได้
+
 SONGS_FILE  = os.path.join(os.path.dirname(__file__), "songs.json")
 CONFIG_FILE = os.path.join(os.path.dirname(__file__), "config.json")
 QUEUE_FILE  = os.path.join(os.path.dirname(__file__), "queue.json")
@@ -70,7 +73,7 @@ def setup_dependencies():
 
 setup_dependencies()
 
-# Content Filter (กรองคำหยาบ/การเมือง/ลามก/บูลลี่)
+# Content Filter
 BANNED_WORDS = [
     "xxx", "porn", "sex", "18+", "กู", "มึง", "เหี้ย", "สัส", "ไอ้", "การเมือง",
     "รัฐบาล", "ทหาร", "ประท้วง", "ยิง", "ฆ่า", "ตาย", "ฆาตกรรม", "ข่มขืน",
@@ -85,7 +88,7 @@ def is_banned_content(title: str, artist: str) -> bool:
             return True
     return False
 
-# YouTube Logic (อ่าน cookies.txt ให้อัตโนมัติ)
+# YouTube Logic
 def get_cookies_file():
     for f in os.listdir("."):
         if f.startswith("cookies") and f.endswith(".txt"):
@@ -100,7 +103,8 @@ def get_ydl_opts():
         'geo_bypass': True,
         'nocheckcertificate': True,
         'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'http_headers': {'Accept-Language': 'en-US,en;q=0.9', 'Referer': 'https://www.youtube.com    }
+        'http_headers': {'Accept-Language': 'en-US,en;q=0.9', 'Referer': 'https://www.youtube.com/'}
+    }
     if cookies_file:
         opts['cookiefile'] = cookies_file
     return opts
@@ -249,7 +253,7 @@ class SongListView(View):
     @discord.ui.button(label="📋 คิวปัจจุบัน", style=discord.ButtonStyle.blurple, custom_id="karaoke_btn_queue")
     async def queue_btn(self, interaction: discord.Interaction, button: Button):
         queue = load_queue()
-        if not queue: return await interaction.response.send_message("📭 คิวว่างอยู่ — ใช้ `/karaoke queue add <song_id>`", ephemeral=True)
+        if not queue: return await interaction.response.send_message("📭 คิวว่างอยู่", ephemeral=True)
         songs = load_songs()
         lines = []
         for i, item in enumerate(queue[:15], 1):
@@ -269,7 +273,7 @@ class SongListView(View):
     @discord.ui.button(label="⭐ อันดับเพลงฮิต", style=discord.ButtonStyle.red, custom_id="karaoke_btn_top")
     async def top_btn(self, interaction: discord.Interaction, button: Button):
         ratings = load_ratings(); songs = load_songs()
-        if not ratings: return await interaction.response.send_message("ยังไม่มีคะแนน — ใช้ `/karaoke like <id>`", ephemeral=True)
+        if not ratings: return await interaction.response.send_message("ยังไม่มีคะแนน", ephemeral=True)
         sorted_ratings = sorted(ratings.items(), key=lambda x: x[1], reverse=True)[:10]
         lines = []
         for i, (sid, score) in enumerate(sorted_ratings, 1): lines.append(f"{i}. **{songs.get(sid, {}).get('SongName', sid)}** — ⭐ {score} คะแนน")
@@ -282,7 +286,7 @@ CAT_EMOJI = {"pop": "🎵", "rock": "🎸", "thai": "🇹🇭", "hiphop": "🎤"
 
 def build_song_list_embeds(songs: dict) -> list[discord.Embed]:
     if not songs:
-        e = discord.Embed(title="🎤 รายการเพลง Karaoke", description="*ยังไม่มีเพลง — ใช้ `/karaoke auto <YouTube URL>` เพื่อเพิ่มเพลงแรก*", color=0x1a1a2e)
+        e = discord.Embed(title="🎤 รายการเพลง Karaoke", description="*ยังไม่มีเพลง — ใช้ `/karaoke auto` หรือรอระบบเพิ่มอัตโนมัติ*", color=0x1a1a2e)
         e.set_footer(text="อัปเดตอัตโนมัติทุกครั้งที่มีการเปลี่ยนแปลง")
         return [e]
     items = sorted(songs.values(), key=lambda s: s.get("SongName", ""))
@@ -345,7 +349,7 @@ async def refresh_song_channel(client: discord.Client) -> None:
     except Exception as e: logger.error(f"Error in refresh_song_channel: {e}")
     finally: _refresh_lock = False
 
-# Bot Logic & Commands
+# Bot Logic & Commands (ไม่ต้องใส่คิวแล้ว!)
 intents = discord.Intents.default(); intents.message_content = True
 bot = discord.Client(intents=intents)
 tree = app_commands.CommandTree(bot)
@@ -380,6 +384,19 @@ def add_track_to_songs(url: str) -> bool:
     save_songs(songs)
     return True
 
+def get_auto_suggested_urls(target: str, limit: int = 20) -> list[str]:
+    """ค้นหาเพลงจากเป้าหมาย (เช่น ชื่อศิลปิน/เพลงใหม่) แล้วคืนค่า URL"""
+    try:
+        import yt_dlp
+        query = f"ytsearch{limit}:{target}"
+        with yt_dlp.YoutubeDL(get_ydl_opts()) as ydl:
+            info = ydl.extract_info(query, download=False)
+            if info and 'entries' in info:
+                return [e['webpage_url'] for e in info['entries'] if e]
+    except Exception as e:
+        logger.error(f"Auto discover error: {e}")
+    return []
+
 @karaoke_group.command(name="setup", description="ตั้งค่าช่องสำหรับแสดงรายการเพลง")
 @app_commands.checks.has_permissions(administrator=True)
 async def setup(interaction: discord.Interaction):
@@ -388,91 +405,51 @@ async def setup(interaction: discord.Interaction):
     save_config(cfg); await refresh_song_channel(bot)
     await interaction.followup.send("✅ ตั้งค่าช่องเพลงเรียบร้อยแล้ว!", ephemeral=True)
 
-@karaoke_group.command(name="auto", description="เพิ่มเพลงอัตโนมัติจาก YouTube URL")
-async def auto(interaction: discord.Interaction, url: str):
+@karaoke_group.command(name="auto", description="เพิ่มเพลงเดียว (ใส่ URL ถ้าอยากได้เอง)")
+async def auto(interaction: discord.Interaction, url: str = None):
     await interaction.response.defer(ephemeral=True, thinking=True)
+    if not url:
+        await interaction.followup.send(f"❌ ต้องใส่ URL หรือรอระบบ Auto ทำงาน!", ephemeral=True); return
     if add_track_to_songs(url):
         await refresh_song_channel(bot)
         await interaction.followup.send("✅ เพิ่มเพลงเรียบร้อย!", ephemeral=True)
     else:
-        await interaction.followup.send("❌ เพิ่มเพลงไม่สำเร็จ (อาจโดนบล็อกหรือเพลงซ้ำ)", ephemeral=True)
+        await interaction.followup.send("❌ เพิ่มเพลงไม่สำเร็จ", ephemeral=True)
 
-@karaoke_group.command(name="sync_artist", description="ดึงเพลงทั้งหมดของศิลปิน (เช่น Saran)")
-async def sync_artist(interaction: discord.Interaction, artist: str):
-    await interaction.response.defer(ephemeral=True, thinking=True)
-    try:
-        import yt_dlp
-        query = f"ytsearch1:{artist}"
-        with yt_dlp.YoutubeDL(get_ydl_opts()) as ydl:
-            info = ydl.extract_info(query, download=False)
-            if not info or 'entries' not in info: 
-                await interaction.followup.send("❌ ไม่พบศิลปินนี้!", ephemeral=True); return
-            channel_url = info['entries'][0].get('channel_url')
-            if not channel_url:
-                await interaction.followup.send("❌ ไม่พบช่องของศิลปินนี้!", ephemeral=True); return
-            playlist_info = ydl.extract_info(f"{channel_url}/videos", download=False)
-            urls = [e['webpage_url'] for e in playlist_info.get('entries', []) if e]
-        count = 0
-        for url in urls:
-            if add_track_to_songs(url): count += 1
-            await asyncio.sleep(3)
-        await refresh_song_channel(bot)
-        await interaction.followup.send(f"✅ ดึงเพลงของ {artist} สำเร็จ (+{count} เพลง)", ephemeral=True)
-    except Exception as e:
-        logger.error(f"Sync error: {e}")
-        await interaction.followup.send(f"❌ เกิดข้อผิดพลาด: {e}", ephemeral=True)
-
-@karaoke_group.command(name="trend", description="ดึง 100 เพลงยอดนิยม (โหลดทีละ 20 เพลง พัก 3 วิ)")
-async def trend(interaction: discord.Interaction):
-    await interaction.response.defer(ephemeral=True, thinking=True)
-    try:
-        import yt_dlp
-        count = 0
-        with yt_dlp.YoutubeDL(get_ydl_opts()) as ydl:
-            for page in range(5):
-                info = ydl.extract_info("ytsearch20:เพลงฮิต", download=False)
-                entries = info.get('entries', [])
-                for e in entries:
-                    if add_track_to_songs(e['webpage_url']): count += 1
-                await asyncio.sleep(3)
-        await refresh_song_channel(bot)
-        await interaction.followup.send(f"✅ ดึงเพลงยอดนิยมสำเร็จ (+{count} เพลง)", ephemeral=True)
-    except Exception as e:
-        logger.error(f"Trend error: {e}")
-        await interaction.followup.send(f"❌ เกิดข้อผิดพลาด: {e}", ephemeral=True)
-
-auto_task = None
-
-@karaoke_group.command(name="auto_start", description="เริ่มระบบเพิ่มเพลงอัตโนมัติ (ทุก 7 วินาที)")
+@karaoke_group.command(name="auto_start", description="เริ่มระบบหาเพลงใหม่ให้อัตโนมัติ (ไม่ต้องใส่คิว)")
 async def auto_start(interaction: discord.Interaction):
     global auto_task
     if auto_task and not auto_task.done():
         await interaction.response.send_message("⚠️ ระบบอัตโนมัติกำลังทำงานอยู่แล้ว!", ephemeral=True); return
-    await interaction.response.send_message("✅ เริ่มระบบเพิ่มเพลงอัตโนมัติแล้ว!", ephemeral=True)
+    await interaction.response.send_message(f"✅ เริ่มระบบหาเพลงจาก **\"{AUTO_TARGET}\"** แล้ว!", ephemeral=True)
     
     async def loop():
         while True:
             try:
-                queue = load_queue()
-                if queue:
-                    item = queue.pop(0)
-                    save_queue(queue)
-                    if add_track_to_songs(item['url']):
-                        await refresh_song_channel(bot)
-                await asyncio.sleep(7)
+                # หาเพลงใหม่จากเป้าหมาย
+                urls = get_auto_suggested_urls(AUTO_TARGET, limit=20)
+                for url in urls:
+                    try:
+                        if add_track_to_songs(url):
+                            await refresh_song_channel(bot)
+                            logger.info(f"Auto added: {url}")
+                    except Exception as e:
+                        logger.error(f"Error adding: {e}")
+                    await asyncio.sleep(10)  # พัก 10 วินาที ปลอดภัยสุดๆ
+                # หาครบแล้ว รอ 1 นาทีแล้ววนหาใหม่
+                await asyncio.sleep(60)
             except Exception as e:
                 logger.error(f"Auto loop error: {e}")
-                await asyncio.sleep(15)
+                await asyncio.sleep(30)
     
     auto_task = asyncio.create_task(loop())
 
-@karaoke_group.command(name="auto_stop", description="หยุดระบบเพิ่มเพลงอัตโนมัติ")
+@karaoke_group.command(name="auto_stop", description="หยุดระบบหาเพลงอัตโนมัติ")
 async def auto_stop(interaction: discord.Interaction):
     global auto_task
     if auto_task and not auto_task.done():
-        auto_task.cancel()
-        auto_task = None
-        await interaction.response.send_message("⏹️ หยุดระบบอัตโนมัติแล้ว!", ephemeral=True)
+        auto_task.cancel(); auto_task = None
+        await interaction.response.send_message("⏹️ หยุดระบบหาเพลงอัตโนมัติแล้ว!", ephemeral=True)
     else:
         await interaction.response.send_message("⚠️ ระบบอัตโนมัติไม่ได้ทำงานอยู่!", ephemeral=True)
 
@@ -486,15 +463,10 @@ async def remove(interaction: discord.Interaction, song_id: str):
     await refresh_song_channel(bot)
     await interaction.response.send_message(f"✅ ลบเพลง {song_id} แล้ว!", ephemeral=True)
 
-@queue_group.command(name="add", description="เพิ่ม URL ลงคิวสำหรับ Auto Add")
-async def queue_add(interaction: discord.Interaction, url: str):
-    queue = load_queue()
-    queue.append({"url": url, "user": interaction.user.display_name, "time": datetime.datetime.now().isoformat()})
-    save_queue(queue)
-    await interaction.response.send_message(f"✅ เพิ่มลงคิวแล้ว! ({len(queue)} ในคิว)", ephemeral=True)
-
 tree.add_command(karaoke_group)
 tree.add_command(queue_group)
+
+auto_task = None
 
 if __name__ == "__main__":
     if not TOKEN: logger.error("DISCORD_BOT_TOKEN not set!"); sys.exit(1)
