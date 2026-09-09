@@ -49,53 +49,45 @@ function fmtDuration(secs) {
     return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-// ฟังก์ชันดึงข้อมูลเพลง (แก้ปัญหา Array -> Object)
-async function getTrackInfo(url) {
-    const args = ['--dump-json', '--no-playlist', '--no-warnings', '--skip-download'];
-    if (hasCookies) args.push('--cookies', cookiesPath);
+// ★★★ ฟังก์ชันใหม่: ใช้ execPromise ในรูปแบบ Object ที่ถูกต้อง ★★★
+async function execPromiseSafe(url, args) {
     try {
-        const output = await ytDlpWrap.execPromise(url, args);
-        // ✅ สำคัญมาก! ถ้าเจอ Array ให้ดึงตัวแรกออกมา
-        if (Array.isArray(output)) {
-            return output[0] || null;
-        }
+        // เปลี่ยนเป็นรูปแบบ { args: [...] } ตามที่ไลบรารีต้องการ
+        const output = await ytDlpWrap.execPromise(url, { args: args });
+        // ถ้า output เป็น Array ให้ดึงตัวแรกออกมา
+        if (Array.isArray(output)) return output[0] || null;
         return output;
     } catch (error) {
-        console.error('Error fetching track info:', error);
+        console.error('Error in execPromiseSafe:', error);
         return null;
     }
 }
 
-// ฟังก์ชันค้นหา URL จากคำค้น (แก้ปัญหา Array -> Object)
+// ฟังก์ชันดึงข้อมูลเพลง
+async function getTrackInfo(url) {
+    const args = ['--dump-json', '--no-playlist', '--no-warnings', '--skip-download'];
+    if (hasCookies) args.push('--cookies', cookiesPath);
+    return await execPromiseSafe(url, args);
+}
+
+// ฟังก์ชันค้นหา URL จากคำค้น
 async function searchTrackUrl(query) {
     try {
-        const output = await ytDlpWrap.execPromise(`ytsearch1:${query}`, ['--dump-json', '--no-warnings', '--skip-download']);
-        // ✅ สำคัญมาก! ถ้าเจอ Array ให้ดึงตัวแรกออกมา
-        let tracks = [];
-        if (Array.isArray(output)) {
-            tracks = output;
-        } else if (output && output.entries) {
-            tracks = output.entries;
-        }
-        return tracks[0] ? tracks[0].url : null;
+        const output = await execPromiseSafe(`ytsearch1:${query}`, ['--dump-json', '--no-warnings', '--skip-download']);
+        if (output && output.url) return output.url;
+        return null;
     } catch (error) {
         console.error('Error searching:', error);
         return null;
     }
 }
 
-// ฟังก์ชันค้นหาศิลปิน (แก้ปัญหา Array -> Object)
+// ฟังก์ชันค้นหาศิลปิน
 async function findArtistChannel(artistName) {
     try {
-        const output = await ytDlpWrap.execPromise(`ytsearch1:${artistName}`, ['--dump-json', '--no-warnings', '--skip-download']);
-        // ✅ สำคัญมาก! ถ้าเจอ Array ให้ดึงตัวแรกออกมา
-        let tracks = [];
-        if (Array.isArray(output)) {
-            tracks = output;
-        } else if (output && output.entries) {
-            tracks = output.entries;
-        }
-        return tracks[0] || null;
+        const output = await execPromiseSafe(`ytsearch1:${artistName}`, ['--dump-json', '--no-warnings', '--skip-download']);
+        if (output && output.channel_url) return output;
+        return null;
     } catch (error) {
         console.error('Error finding artist:', error);
         return null;
@@ -237,10 +229,11 @@ client.on('interactionCreate', async interaction => {
             const added = [];
             const banned = [];
 
-            const playlist = await ytDlpWrap.execPromise(`${channelUrl}/videos`, ['--dump-json', '--no-warnings', '--skip-download', '--flat-playlist']);
+            const playlistOutput = await execPromiseSafe(`${channelUrl}/videos`, ['--dump-json', '--no-warnings', '--skip-download', '--flat-playlist']);
             let videos = [];
-            if (Array.isArray(playlist)) videos = playlist;
-            else if (playlist && playlist.entries) videos = playlist.entries;
+            if (Array.isArray(playlistOutput)) videos = playlistOutput;
+            else if (playlistOutput && playlistOutput.entries) videos = playlistOutput.entries;
+            else if (playlistOutput) videos = [playlistOutput];
 
             for (const video of videos) {
                 if (video && video.url) {
@@ -269,10 +262,11 @@ client.on('interactionCreate', async interaction => {
         await interaction.deferReply();
         await interaction.editReply({ embeds: [replyEmbed.setDescription('⏳ **กำลังดึงเพลงยอดนิยม 10 อันดับ...**')] });
         try {
-            const output = await ytDlpWrap.execPromise('ytsearch10:เพลงฮิต', ['--dump-json', '--no-warnings', '--skip-download']);
+            const output = await execPromiseSafe('ytsearch10:เพลงฮิต', ['--dump-json', '--no-warnings', '--skip-download']);
             let tracks = [];
             if (Array.isArray(output)) tracks = output;
             else if (output && output.entries) tracks = output.entries;
+            else if (output) tracks = [output];
 
             const added = [];
             const banned = [];
