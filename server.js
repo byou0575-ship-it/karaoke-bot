@@ -1,8 +1,10 @@
 const { Client, GatewayIntentBits, EmbedBuilder, SlashCommandBuilder } = require('discord.js');
-const YTDlpWrap = require('yt-dlp-wrap').default;
+const { execFile } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const express = require('express');
+const { promisify } = require('util');
+const execFileAsync = promisify(execFile);
 require('dotenv').config();
 
 const token = process.env.DISCORD_BOT_TOKEN;
@@ -18,8 +20,8 @@ app.listen(PORT, () => {
     console.log(`Web server running on port ${PORT}`);
 });
 
-// yt-dlp
-const ytDlpWrap = new YTDlpWrap(path.join(__dirname, 'yt-dlp'));
+// yt-dlp (เรียกผ่าน Command Line โดยตรง)
+const ytDlpPath = path.join(__dirname, 'yt-dlp');
 const cookiesPath = path.join(__dirname, 'cookies.txt');
 const hasCookies = fs.existsSync(cookiesPath);
 
@@ -49,31 +51,35 @@ function fmtDuration(secs) {
     return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-// ★★★ ฟังก์ชันใหม่: ใช้ execPromise ในรูปแบบ Object ที่ถูกต้อง ★★★
-async function execPromiseSafe(url, args) {
+// ★★★ ฟังก์ชันเรียก yt-dlp ผ่าน Command Line ตรงๆ (ไม่มีบั๊กแล้ว) ★★★
+async function getYtDlpOutput(url, args = []) {
     try {
-        // เปลี่ยนเป็นรูปแบบ { args: [...] } ตามที่ไลบรารีต้องการ
-        const output = await ytDlpWrap.execPromise(url, { args: args });
-        // ถ้า output เป็น Array ให้ดึงตัวแรกออกมา
-        if (Array.isArray(output)) return output[0] || null;
+        // เตรียม Arguments
+        let fullArgs = args;
+        if (hasCookies) fullArgs = [...args, '--cookies', cookiesPath];
+
+        // เรียกใช้งานผ่าน execFile
+        const { stdout } = await execFileAsync(ytDlpPath, [url, ...fullArgs], { maxBuffer: 1024 * 1024 * 100 });
+        const output = JSON.parse(stdout);
+        
+        // ถ้าเป็น Array ให้ดึงตัวแรก
+        if (Array.isArray(output)) return output[0];
         return output;
     } catch (error) {
-        console.error('Error in execPromiseSafe:', error);
+        console.error('Error with yt-dlp command:', error.stderr || error.message);
         return null;
     }
 }
 
 // ฟังก์ชันดึงข้อมูลเพลง
 async function getTrackInfo(url) {
-    const args = ['--dump-json', '--no-playlist', '--no-warnings', '--skip-download'];
-    if (hasCookies) args.push('--cookies', cookiesPath);
-    return await execPromiseSafe(url, args);
+    return await getYtDlpOutput(url, ['--dump-json', '--no-playlist', '--no-warnings', '--skip-download']);
 }
 
 // ฟังก์ชันค้นหา URL จากคำค้น
 async function searchTrackUrl(query) {
     try {
-        const output = await execPromiseSafe(`ytsearch1:${query}`, ['--dump-json', '--no-warnings', '--skip-download']);
+        const output = await getYtDlpOutput(`ytsearch1:${query}`, ['--dump-json', '--no-warnings', '--skip-download']);
         if (output && output.url) return output.url;
         return null;
     } catch (error) {
@@ -85,7 +91,7 @@ async function searchTrackUrl(query) {
 // ฟังก์ชันค้นหาศิลปิน
 async function findArtistChannel(artistName) {
     try {
-        const output = await execPromiseSafe(`ytsearch1:${artistName}`, ['--dump-json', '--no-warnings', '--skip-download']);
+        const output = await getYtDlpOutput(`ytsearch1:${artistName}`, ['--dump-json', '--no-warnings', '--skip-download']);
         if (output && output.channel_url) return output;
         return null;
     } catch (error) {
@@ -229,7 +235,7 @@ client.on('interactionCreate', async interaction => {
             const added = [];
             const banned = [];
 
-            const playlistOutput = await execPromiseSafe(`${channelUrl}/videos`, ['--dump-json', '--no-warnings', '--skip-download', '--flat-playlist']);
+            const playlistOutput = await getYtDlpOutput(`${channelUrl}/videos`, ['--dump-json', '--no-warnings', '--skip-download', '--flat-playlist']);
             let videos = [];
             if (Array.isArray(playlistOutput)) videos = playlistOutput;
             else if (playlistOutput && playlistOutput.entries) videos = playlistOutput.entries;
@@ -262,7 +268,7 @@ client.on('interactionCreate', async interaction => {
         await interaction.deferReply();
         await interaction.editReply({ embeds: [replyEmbed.setDescription('⏳ **กำลังดึงเพลงยอดนิยม 10 อันดับ...**')] });
         try {
-            const output = await execPromiseSafe('ytsearch10:เพลงฮิต', ['--dump-json', '--no-warnings', '--skip-download']);
+            const output = await getYtDlpOutput('ytsearch10:เพลงฮิต', ['--dump-json', '--no-warnings', '--skip-download']);
             let tracks = [];
             if (Array.isArray(output)) tracks = output;
             else if (output && output.entries) tracks = output.entries;
