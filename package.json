@@ -1,7 +1,7 @@
 {
   "name": "karaoke-bot",
   "version": "1.0.0",
-  "description": "Karaoke Bot using yt-dlp-wrap",
+  "description": "Karaoke Bot using yt-dlp-exec",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
@@ -9,7 +9,7 @@
   "dependencies": {
     "discord.js": "^14.15.0",
     "dotenv": "^16.4.5",
-    "yt-dlp-wrap": "^2.3.0",
+    "yt-dlp-exec": "^2.0.4",
     "express": "^4.19.2"
   }
 }
