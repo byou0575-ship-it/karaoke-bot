@@ -2,9 +2,9 @@
   "name": "karaoke-bot",
   "version": "1.0.0",
   "description": "Karaoke Bot using yt-lib",
-  "main": "server.cjs",
+  "main": "server.mjs",
   "scripts": {
-    "start": "node server.cjs"
+    "start": "node server.mjs"
   },
   "dependencies": {
     "discord.js": "^14.15.0",
