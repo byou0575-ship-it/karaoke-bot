@@ -1,6 +1,8 @@
-const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const { YoutubeSearch } = require('yt-lib');
-require('dotenv').config();
+import { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+import ytlib from 'yt-lib';
+import 'dotenv/config';
+
+const { YoutubeSearch } = ytlib;
 
 const token = process.env.DISCORD_BOT_TOKEN;
 
