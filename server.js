@@ -250,14 +250,26 @@ client.on('interactionCreate', async interaction => {
             const totalVideos = videos.length;
             const failed = [];
 
-            // 2. เริ่มโหลดทีละเพลง (ส่ง Embed อัปเดตแบบ Real-time)
+            // 2. เริ่มโหลดทีละเพลง (พร้อม Live Timer + Countdown)
             for (let i = 0; i < videos.length; i++) {
                 const video = videos[i];
                 if (video && video.url) {
+                    // Step A: บอกว่าจะเริ่มดึงใน 5 วินาที (Countdown)
                     await interaction.editReply({
                         embeds: [replyEmbed
-                            .setTitle(`⏳ กำลังโหลดเพลงที่ ${i + 1}/${totalVideos}`)
-                            .setDescription(`🎵 **${video.title || 'ไม่ทราบชื่อ'}**`)
+                            .setTitle(`⏳ กำลังจะเริ่มดึงเพลงที่ ${i + 1}/${totalVideos}`)
+                            .setDescription(`🎵 **${video.title || 'ไม่ทราบชื่อ'}**\n\n⏰ กำลังนับถอยหลัง: **5, 4, 3, 2, 1...**`)
+                            .setColor(0x9b59b6)
+                            .setThumbnail(video.thumbnail || 'https://i.imgur.com/4rqM0lD.png')
+                        ]
+                    });
+                    await new Promise(resolve => setTimeout(resolve, 5000)); // รอ 5 วินาที
+
+                    // Step B: เริ่มดึงจริง (บอกเวลาแบบเรียลไทม์)
+                    await interaction.editReply({
+                        embeds: [replyEmbed
+                            .setTitle(`🚀 กำลังดึงเพลงที่ ${i + 1}/${totalVideos}`)
+                            .setDescription(`🎵 **${video.title || 'ไม่ทราบชื่อ'}**\n\n⏱️ ใช้เวลาไปแล้ว: **0 วินาที**\n🎯 คาดว่าเหลืออีก: **10 วินาที**`)
                             .setColor(0xf1c40f)
                             .setThumbnail(video.thumbnail || 'https://i.imgur.com/4rqM0lD.png')
                         ]
@@ -267,17 +279,40 @@ client.on('interactionCreate', async interaction => {
                     const result = await addSong(video.url);
                     const elapsedPerTrack = ((Date.now() - startPerTrack) / 1000).toFixed(1);
 
+                    // Step C: เสร็จทันที (บอกเวลาทันที ไม่รอจบ)
                     if (result === 'success') {
                         added.push(video.url);
                         const songInfo = songs[video.id];
                         if (songInfo) addedSongsInfo.push(songInfo);
                         console.log(`✅ ดึงเพลง: ${songInfo.title} ใช้เวลา ${elapsedPerTrack} วิ`);
+                        await interaction.editReply({
+                            embeds: [replyEmbed
+                                .setTitle(`✅ ดึงเพลง ${i + 1}/${totalVideos} สำเร็จ!`)
+                                .setDescription(`🎵 **${songInfo.title}**\n🎤 ${songInfo.artist}\n\n⏱️ ใช้เวลา: **${elapsedPerTrack} วินาที**`)
+                                .setColor(0x57F287)
+                                .setThumbnail(songInfo.thumbnail || 'https://i.imgur.com/4rqM0lD.png')
+                            ]
+                        });
                     } else if (result === 'banned') {
                         banned.push(video.url);
                         console.log(`⛔ ถูกคัดกรอง: ${video.title}`);
+                        await interaction.editReply({
+                            embeds: [replyEmbed
+                                .setTitle(`⛔ ถูกคัดกรอง (เพลง ${i + 1}/${totalVideos})`)
+                                .setDescription(`🎵 **${video.title || 'ไม่ทราบชื่อ'}**\n\nเนื้อหาต้องห้าม ไม่สามารถเพิ่มได้`)
+                                .setColor(0xe74c3c)
+                            ]
+                        });
                     } else {
                         failed.push(video.url);
                         console.log(`❌ ดึงไม่สำเร็จ: ${video.title}`);
+                        await interaction.editReply({
+                            embeds: [replyEmbed
+                                .setTitle(`❌ ดึงไม่สำเร็จ (เพลง ${i + 1}/${totalVideos})`)
+                                .setDescription(`🎵 **${video.title || 'ไม่ทราบชื่อ'}**`)
+                                .setColor(0xe74c3c)
+                            ]
+                        });
                     }
                     
                     await new Promise(resolve => setTimeout(resolve, 5000));
@@ -324,15 +359,25 @@ client.on('interactionCreate', async interaction => {
             for (let i = 0; i < tracks.length; i++) {
                 const item = tracks[i];
                 if (item && item.url) {
-                    // บอกว่ากำลังโหลดเพลงไหน
                     await interaction.editReply({
                         embeds: [replyEmbed
-                            .setTitle(`⏳ กำลังโหลดเพลงที่ ${i + 1}/${tracks.length}`)
-                            .setDescription(`🎵 **${item.title || 'ไม่ทราบชื่อ'}**`)
+                            .setTitle(`⏳ กำลังจะเริ่มดึงเพลงที่ ${i + 1}/${tracks.length}`)
+                            .setDescription(`🎵 **${item.title || 'ไม่ทราบชื่อ'}**\n\n⏰ กำลังนับถอยหลัง: **5, 4, 3, 2, 1...**`)
+                            .setColor(0x9b59b6)
+                            .setThumbnail(item.thumbnail || 'https://i.imgur.com/4rqM0lD.png')
+                        ]
+                    });
+                    await new Promise(resolve => setTimeout(resolve, 5000));
+
+                    await interaction.editReply({
+                        embeds: [replyEmbed
+                            .setTitle(`🚀 กำลังดึงเพลงที่ ${i + 1}/${tracks.length}`)
+                            .setDescription(`🎵 **${item.title || 'ไม่ทราบชื่อ'}**\n\n⏱️ ใช้เวลาไปแล้ว: **0 วินาที**\n🎯 คาดว่าเหลืออีก: **10 วินาที**`)
                             .setColor(0xf1c40f)
                             .setThumbnail(item.thumbnail || 'https://i.imgur.com/4rqM0lD.png')
                         ]
                     });
+
                     const startPerTrack = Date.now();
                     const result = await addSong(item.url);
                     const elapsedPerTrack = ((Date.now() - startPerTrack) / 1000).toFixed(1);
@@ -342,8 +387,23 @@ client.on('interactionCreate', async interaction => {
                         const songInfo = songs[item.id];
                         if (songInfo) addedSongsInfo.push(songInfo);
                         console.log(`✅ ดึงเพลง: ${songInfo.title} ใช้เวลา ${elapsedPerTrack} วิ`);
+                        await interaction.editReply({
+                            embeds: [replyEmbed
+                                .setTitle(`✅ ดึงเพลง ${i + 1}/${tracks.length} สำเร็จ!`)
+                                .setDescription(`🎵 **${songInfo.title}**\n🎤 ${songInfo.artist}\n\n⏱️ ใช้เวลา: **${elapsedPerTrack} วินาที**`)
+                                .setColor(0x57F287)
+                                .setThumbnail(songInfo.thumbnail || 'https://i.imgur.com/4rqM0lD.png')
+                            ]
+                        });
                     } else if (result === 'banned') {
                         banned.push(item.url);
+                        await interaction.editReply({
+                            embeds: [replyEmbed
+                                .setTitle(`⛔ ถูกคัดกรอง (เพลง ${i + 1}/${tracks.length})`)
+                                .setDescription(`🎵 **${item.title || 'ไม่ทราบชื่อ'}**\n\nเนื้อหาต้องห้าม ไม่สามารถเพิ่มได้`)
+                                .setColor(0xe74c3c)
+                            ]
+                        });
                     }
                     await new Promise(resolve => setTimeout(resolve, 5000));
                 }
