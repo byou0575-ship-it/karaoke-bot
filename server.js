@@ -24,55 +24,57 @@ const cookiesPath = path.join(__dirname, 'cookies.txt');
 const hasCookies = fs.existsSync(cookiesPath);
 
 let songs = {};
+let autoTask = null;
 
 // ระบบคัดกรองเนื้อหาต้องห้าม (ตามที่ขอ)
 const BANNED_WORDS = [
-    // คำหยาบ
-    "กู", "มึง", "เหี้ย", "สัส", "ไอ้", "quan", "โง่",
-    // ลามก
-    "xxx", "porn", "sex", "18+", "หนังโป๊", "ลามก",
-    // การเมือง
-    "การเมือง", "รัฐบาล", "ทหาร", "ประท้วง", "ชนชั้น",
-    // บูลลี่/เหยียด
-    "บูลลี่", "bully", "เหยียด", "ชาติพันธุ์", "เสียดสี",
-    // ความรุนแรง
-    "ยิง", "ฆ่า", "ตาย", "ฆาตกรรม", "ข่มขืน"
+    "กู", "มึง", "เหี้ย", "สัส", "ไอ้", "xxx", "porn", "sex", "18+",
+    "การเมือง", "รัฐบาล", "ทหาร", "ประท้วง", "บูลลี่", "bully",
+    "เหยียด", "ชาติพันธุ์", "ยิง", "ฆ่า", "ตาย", "ฆาตกรรม", "ข่มขืน"
 ];
 
 function isBanned(title, artist) {
     const text = `${title} ${artist}`.toLowerCase();
-    for (const word in BANNED_WORDS) {
-        if (text.includes(word.toLowerCase())) {
-            return true;
-        }
+    for (const word of BANNED_WORDS) {
+        if (text.includes(word.toLowerCase())) return true;
     }
     return false;
 }
 
-// ค้นหาช่องของศิลปินและดึงเพลงทั้งหมด
-async function getArtistTracks(artistName) {
+// ฟังก์ชันดึงข้อมูลเพลง
+async function getTrackInfo(url) {
+    const args = ['--dump-json', '--no-playlist', '--no-warnings', '--skip-download'];
+    if (hasCookies) args.push('--cookies', cookiesPath);
     try {
-        // 1. ค้นหาช่องจากชื่อศิลปิน
-        const { results: channelSearch } = await ytDlpWrap.execPromise(`ytsearch1:${artistName}`, ['--dump-json', '--no-warnings', '--skip-download']);
-        if (!channelSearch || channelSearch.length === 0) return [];
-
-        const channelUrl = channelSearch[0].channel_url;
-        if (!channelUrl) return [];
-
-        // 2. ดึงวิดีโอทั้งหมดจากช่อง
-        const playlist = await ytDlpWrap.execPromise(`${channelUrl}/videos`, ['--dump-json', '--no-warnings', '--skip-download', '--flat-playlist']);
-        
-        const videos = Array.isArray(playlist) ? playlist : [playlist];
-        const urls = [];
-        for (const video of videos) {
-            if (video && video.url) {
-                urls.push(video.url);
-            }
+        const output = await ytDlpWrap.execPromise(url, args);
+        // yt-dlp อาจคืนค่าเป็น Array หรือ Object ก็ได้ ต้องเช็คให้ดี
+        let info;
+        if (Array.isArray(output)) {
+            info = output[0];
+        } else {
+            info = output;
         }
-        return urls;
+        return info;
     } catch (error) {
-        console.error('Error getting artist tracks:', error);
-        return [];
+        console.error('Error fetching track info:', error);
+        return null;
+    }
+}
+
+// ยูทิลิตี้: ค้นหา URL เพลงแรกจากคำค้น
+async function searchTrackUrl(query) {
+    try {
+        const output = await ytDlpWrap.execPromise(`ytsearch1:${query}`, ['--dump-json', '--no-warnings', '--skip-download']);
+        let tracks = [];
+        if (Array.isArray(output)) {
+            tracks = output;
+        } else if (output && output.entries) {
+            tracks = output.entries;
+        }
+        return tracks[0] ? tracks[0].url : null;
+    } catch (error) {
+        console.error('Error searching:', error);
+        return null;
     }
 }
 
@@ -83,11 +85,7 @@ async function addSong(url) {
         const title = info.title || 'Unknown';
         const artist = info.uploader || 'Unknown';
 
-        // คัดกรองเนื้อหาก่อนเพิ่ม
-        if (isBanned(title, artist)) {
-            console.log(`Banned song skipped: ${title}`);
-            return 'banned';
-        }
+        if (isBanned(title, artist)) return 'banned';
 
         songs[info.id] = {
             id: info.id,
@@ -101,7 +99,7 @@ async function addSong(url) {
     return 'failed';
 }
 
-// รีเฟรชข้อความ
+// ฟังก์ชันรีเฟรชข้อความ
 async function refreshMessage() {
     const channelId = process.env.SONG_CHANNEL_ID;
     if (!channelId) return;
@@ -124,12 +122,14 @@ client.once('ready', async () => {
 
     const commands = [
         new SlashCommandBuilder().setName('ตั้งค่า').setDescription('ตั้งค่าช่องสำหรับแสดงรายการเพลง'),
-        new SlashCommandBuilder().setName('หาเพลง').setDescription('ค้นหาและเพิ่มเพลงจาก YouTube').addStringOption(option => option.setName('ชื่อเพลง').setDescription('ชื่อเพลงหรือชื่อศิลปิน').setRequired(true)),
+        new SlashCommandBuilder().setName('หาเพลง').setDescription('ค้นหาและเพิ่มเพลงจาก YouTube โดยใช้ชื่อเพลงหรือชื่อศิลปิน').addStringOption(option => option.setName('ชื่อเพลง').setDescription('ชื่อเพลงหรือชื่อศิลปิน').setRequired(true)),
         new SlashCommandBuilder().setName('ศิลปิน').setDescription('ดึงเพลงทั้งหมดของศิลปินที่ระบุ').addStringOption(option => option.setName('ชื่อศิลปิน').setDescription('ชื่อศิลปิน').setRequired(true)),
         new SlashCommandBuilder().setName('เพลงฮิต').setDescription('ดึงเพลงยอดนิยม 10 อันดับแรก'),
         new SlashCommandBuilder().setName('เริ่มหาเพลง').setDescription('เริ่มระบบหาเพลงอัตโนมัติ'),
         new SlashCommandBuilder().setName('หยุดหาเพลง').setDescription('หยุดระบบหาเพลงอัตโนมัติ'),
-        new SlashCommandBuilder().setName('ลบเพลง').setDescription('ลบเพลงออกจากระบบ').addStringOption(option => option.setName('id').setDescription('ID ของเพลงที่ต้องการลบ').setRequired(true))
+        new SlashCommandBuilder().setName('ลบเพลง').setDescription('ลบเพลงออกจากระบบ').addStringOption(option => option.setName('id').setDescription('ID ของเพลงที่ต้องการลบ').setRequired(true)),
+        new SlashCommandBuilder().setName('ดูคลังเพลง').setDescription('ดูรายการเพลงทั้งหมดที่มีในระบบ'),
+        new SlashCommandBuilder().setName('สุ่มเพลง').setDescription('สุ่มเพลงหนึ่งเพลงจากคลัง'),
     ];
 
     try {
@@ -152,20 +152,18 @@ client.on('interactionCreate', async interaction => {
         process.env.SONG_CHANNEL_ID = interaction.channelId;
         await interaction.reply('✅ ตั้งค่าช่องเพลงเรียบร้อย!');
     }
-    
+
     if (commandName === 'หาเพลง') {
         const query = options.getString('ชื่อเพลง');
         await interaction.reply(`⏳ กำลังค้นหาเพลง: ${query}...`);
-        
         try {
-            const { results } = await ytDlpWrap.execPromise(`ytsearch1:${query}`, ['--dump-json', '--no-warnings', '--skip-download']);
-            if (results && results.length > 0) {
-                const url = results[0].url;
+            const url = await searchTrackUrl(query);
+            if (url) {
                 const addResult = await addSong(url);
                 if (addResult === 'success') {
-                    await interaction.editReply(`✅ เพิ่มเพลง: **${results[0].title}** เรียบร้อย!`);
+                    await interaction.editReply(`✅ เพิ่มเพลง: **${songs[Object.keys(songs).pop()].title}** เรียบร้อย!`);
                 } else if (addResult === 'banned') {
-                    await interaction.editReply(`⛔ เพลงนี้มีเนื้อหาต้องห้าม ไม่สามารถเพิ่มได้!`);
+                    await interaction.editReply('⛔ เพลงนี้มีเนื้อหาต้องห้าม ไม่สามารถเพิ่มได้!');
                 } else {
                     await interaction.editReply('❌ หาเพลงไม่สำเร็จ!');
                 }
@@ -173,77 +171,104 @@ client.on('interactionCreate', async interaction => {
                 await interaction.editReply('❌ ไม่พบเพลงนี้!');
             }
         } catch (error) {
-            console.error('Error searching:', error);
             await interaction.editReply(`❌ เกิดข้อผิดพลาด: ${error.message}`);
         }
     }
-    
+
     if (commandName === 'ศิลปิน') {
         const artist = options.getString('ชื่อศิลปิน');
         await interaction.reply(`⏳ กำลังดึงเพลงทั้งหมดของ ${artist}...`);
-        
         try {
-            const urls = await getArtistTracks(artist);
-            const added = [];
-            const banned = [];
-            
-            if (urls.length === 0) {
-                await interaction.editReply(`❌ ไม่พบเพลงของ ${artist}!`);
+            // 1. ค้นหาช่อง
+            const channelSearch = await ytDlpWrap.execPromise(`ytsearch1:${artist}`, ['--dump-json', '--no-warnings', '--skip-download']);
+            let foundChannel = null;
+            if (Array.isArray(channelSearch)) foundChannel = channelSearch[0];
+            else if (channelSearch && channelSearch.entries) foundChannel = channelSearch.entries[0];
+
+            if (!foundChannel || !foundChannel.channel_url) {
+                await interaction.editReply(`❌ ไม่พบช่องของ ${artist}!`);
                 return;
             }
-            
-            // ดึงทีละเพลง (พัก 3 วิ เพื่อป้องกันโดนบล็อก)
-            for (const url of urls) {
-                const result = await addSong(url);
-                if (result === 'success') added.push(url);
-                if (result === 'banned') banned.push(url);
-                await new Promise(resolve => setTimeout(resolve, 3000));
+
+            const channelUrl = foundChannel.channel_url;
+            const added = [];
+            const banned = [];
+
+            // 2. ดึงวิดีโอทั้งหมดจากช่อง
+            const playlist = await ytDlpWrap.execPromise(`${channelUrl}/videos`, ['--dump-json', '--no-warnings', '--skip-download', '--flat-playlist']);
+            let videos = [];
+            if (Array.isArray(playlist)) videos = playlist;
+            else if (playlist && playlist.entries) videos = playlist.entries;
+
+            // 3. เพิ่มทีละเพลง (พัก 5 วิ/เพลง)
+            for (const video of videos) {
+                if (video && video.url) {
+                    const result = await addSong(video.url);
+                    if (result === 'success') added.push(video.url);
+                    if (result === 'banned') banned.push(video.url);
+                    await new Promise(resolve => setTimeout(resolve, 5000));
+                }
             }
-            
+
             await interaction.editReply(`✅ ดึงเพลงของ ${artist} สำเร็จ! (+${added.length} เพลง) ${banned.length > 0 ? `⛔ (ข้าม ${banned.length} เพลงที่มีเนื้อหาต้องห้าม)` : ''}`);
         } catch (error) {
             console.error('Error syncing artist:', error);
             await interaction.editReply(`❌ เกิดข้อผิดพลาด: ${error.message}`);
         }
     }
-    
+
     if (commandName === 'เพลงฮิต') {
         await interaction.reply('⏳ กำลังดึงเพลงยอดนิยม...');
         try {
-            const { results } = await ytDlpWrap.execPromise('ytsearch10:เพลงฮิต', ['--dump-json', '--no-warnings', '--skip-download']);
+            const output = await ytDlpWrap.execPromise('ytsearch10:เพลงฮิต', ['--dump-json', '--no-warnings', '--skip-download']);
+            let tracks = [];
+            if (Array.isArray(output)) tracks = output;
+            else if (output && output.entries) tracks = output.entries;
+
             const added = [];
             const banned = [];
-            for (const item of results) {
-                const result = await addSong(item.url);
-                if (result === 'success') added.push(item.url);
-                if (result === 'banned') banned.push(item.url);
-                await new Promise(resolve => setTimeout(resolve, 3000));
+            for (const item of tracks) {
+                if (item && item.url) {
+                    const result = await addSong(item.url);
+                    if (result === 'success') added.push(item.url);
+                    if (result === 'banned') banned.push(item.url);
+                    await new Promise(resolve => setTimeout(resolve, 5000));
+                }
             }
             await interaction.editReply(`✅ ดึงเพลงยอดนิยมสำเร็จ! (+${added.length} เพลง) ${banned.length > 0 ? `⛔ (ข้าม ${banned.length} เพลงที่มีเนื้อหาต้องห้าม)` : ''}`);
         } catch (error) {
             await interaction.editReply(`❌ เกิดข้อผิดพลาด: ${error.message}`);
         }
     }
-    
+
     if (commandName === 'เริ่มหาเพลง') {
+        if (autoTask) {
+            await interaction.reply('⚠️ ระบบหาเพลงอัตโนมัติกำลังทำงานอยู่แล้ว!');
+            return;
+        }
         await interaction.reply('🚀 เริ่มระบบหาเพลงอัตโนมัติแล้ว!');
-        setInterval(async () => {
+        autoTask = setInterval(async () => {
             try {
-                const { results } = await ytDlpWrap.execPromise('ytsearch1:เพลงไทย', ['--dump-json', '--no-warnings', '--skip-download']);
-                if (results && results.length > 0) {
-                    await addSong(results[0].url);
+                const url = await searchTrackUrl('เพลงไทย');
+                if (url) {
+                    await addSong(url);
                 }
             } catch (error) {
                 console.error('Auto add error:', error);
             }
         }, 60000); // ทุก 60 วินาที
     }
-    
+
     if (commandName === 'หยุดหาเพลง') {
-        await interaction.reply('⏹️ หยุดระบบหาเพลงอัตโนมัติแล้ว!');
-        // หมายเหตุ: ยังต้องรีสตาร์ท Service เพื่อล้าง Interval
+        if (autoTask) {
+            clearInterval(autoTask);
+            autoTask = null;
+            await interaction.reply('⏹️ หยุดระบบหาเพลงอัตโนมัติแล้ว!');
+        } else {
+            await interaction.reply('⚠️ ระบบหาเพลงอัตโนมัติไม่ได้ทำงานอยู่!');
+        }
     }
-    
+
     if (commandName === 'ลบเพลง') {
         const songId = options.getString('id');
         if (songs[songId]) {
@@ -252,6 +277,20 @@ client.on('interactionCreate', async interaction => {
         } else {
             await interaction.reply('❌ ไม่พบเพลงนี้!');
         }
+    }
+
+    if (commandName === 'ดูคลังเพลง') {
+        await interaction.reply(`📂 มีทั้งหมด ${Object.keys(songs).length} เพลงในคลัง`);
+    }
+
+    if (commandName === 'สุ่มเพลง') {
+        const songList = Object.values(songs);
+        if (songList.length === 0) {
+            await interaction.reply('📭 คลังเพลงว่างเปล่า!');
+            return;
+        }
+        const randomSong = songList[Math.floor(Math.random() * songList.length)];
+        await interaction.reply(`🎲 สุ่มได้เพลง: **${randomSong.title}** (ID: ${randomSong.id})`);
     }
 });
 
