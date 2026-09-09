@@ -2,21 +2,31 @@ const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder
 const YTDlpWrap = require('yt-dlp-wrap').default;
 const path = require('path');
 const fs = require('fs');
+const express = require('express');
 require('dotenv').config();
 
 const token = process.env.DISCORD_BOT_TOKEN;
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
 
-// สร้าง instance ของ yt-dlp (Render จะโหลดตัวนี้ให้จาก render.yaml)
-const ytDlpWrap = new YTDlpWrap(path.join(__dirname, 'yt-dlp'));
+// สร้าง Express Server เพื่อเปิดพอร์ตให้ Render เห็น
+const app = express();
+app.get('/', (req, res) => {
+    res.send('Bot is running!');
+});
 
-// หาไฟล์ cookies.txt ในโฟลเดอร์
+// ตั้งค่าพอร์ต
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => {
+    console.log(`Web server running on port ${PORT}`);
+});
+
+// yt-dlp
+const ytDlpWrap = new YTDlpWrap(path.join(__dirname, 'yt-dlp'));
 const cookiesPath = path.join(__dirname, 'cookies.txt');
 const hasCookies = fs.existsSync(cookiesPath);
 
 let songs = {};
 
-// ฟังก์ชันค้นหาข้อมูลเพลงจาก URL
 async function getTrackInfo(url) {
     const args = ['--dump-json', '--no-playlist', '--no-warnings', '--skip-download'];
     if (hasCookies) args.push('--cookies', cookiesPath);
@@ -31,7 +41,6 @@ async function getTrackInfo(url) {
     }
 }
 
-// ฟังก์ชันดาวน์โหลดเสียงเป็น MP3
 async function downloadTrack(url, outputPath) {
     const args = [
         '-f', 'bestaudio/best',
@@ -70,7 +79,6 @@ async function refreshMessage() {
     await channel.send({ embeds: [embed] });
 }
 
-// คำสั่งนี้จะถูกใช้งานเพื่อดาวน์โหลดเสียง
 async function addSong(url) {
     const info = await getTrackInfo(url);
     if (info && info.id) {
@@ -95,7 +103,6 @@ client.once('ready', () => {
     refreshMessage();
 });
 
-// จัดการ Slash Commands
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
@@ -118,7 +125,6 @@ client.on('interactionCreate', async interaction => {
         await interaction.reply(`⏳ กำลังค้นหาเพลงของ ${artist}...`);
         
         const { results } = await ytDlpWrap.execPromise(`ytsearch1:${artist}`, ['--dump-json', '--no-warnings', '--skip-download']);
-        // (ระบบจริงจะดึงเพลงทั้งหมดของช่องนั้น)
         await interaction.editReply(`✅ ดึงข้อมูลช่อง ${artist} แล้ว`);
     }
     
@@ -129,7 +135,7 @@ client.on('interactionCreate', async interaction => {
             if (results && results.length > 0) {
                 await addSong(results[0].url);
             }
-        }, 60000); // ทุก 60 วินาที
+        }, 60000);
     }
 });
 
