@@ -3,6 +3,7 @@ const youtubedl = require('yt-dlp-exec');
 const path = require('path');
 const fs = require('fs');
 const express = require('express');
+const axios = require('axios');
 require('dotenv').config();
 
 const token = process.env.DISCORD_BOT_TOKEN;
@@ -17,6 +18,10 @@ const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
     console.log(`Web server running on port ${PORT}`);
 });
+
+// Roblox Config
+const ROBLOX_API_KEY = process.env.ROBLOX_API_KEY;
+const ROBLOX_USER_ID = process.env.ROBLOX_USER_ID;
 
 // หา Cookies
 function getCookiesPath() {
@@ -57,6 +62,106 @@ function fmtDuration(secs) {
     const m = Math.floor(secs / 60);
     const s = secs % 60;
     return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+// ★★★ ฟังก์ชันอัปโหลดไฟล์เสียงขึ้น Roblox (อัตโนมัติ) ★★★
+async function uploadToRoblox(filePath, displayName) {
+    if (!ROBLOX_API_KEY || !ROBLOX_USER_ID) {
+        console.log('Roblox API Key or User ID not found. Skipping upload.');
+        return null;
+    }
+
+    try {
+        const fileBuffer = fs.readFileSync(filePath);
+        const fileSize = fileBuffer.length;
+
+        // Roblox จำกัดขนาดไฟล์เสียง 20MB
+        if (fileSize > 20 * 1024 * 1024) {
+            console.log(`File too large (${fileSize} bytes). Skipping Roblox upload.`);
+            return null;
+        }
+
+        const url = "https://apis.roblox.com/assets/v1/assets";
+        const payload = {
+            "assetType": "Audio",
+            "displayName": displayName.slice(0, 50),
+            "description": `Karaoke: ${displayName}`,
+            "creationContext": {
+                "creator": {
+                    "userId": parseInt(ROBLOX_USER_ID)
+                }
+            }
+        };
+
+        const files = {
+            "request": (null, JSON.stringify(payload), "application/json"),
+            "fileContent": (path.basename(filePath), fileBuffer, "audio/mpeg")
+        };
+
+        const headers = { "x-api-key": ROBLOX_API_KEY };
+
+        const response = await axios.post(url, files, { headers: headers, timeout: 60000 });
+        const data = response.data;
+
+        if (data && data.assetId) {
+            console.log(`✅ Uploaded to Roblox: ${data.assetId}`);
+            return String(data.assetId);
+        } else {
+            console.log(`❌ Roblox Upload failed: ${data}`);
+            return null;
+        }
+    } catch (error) {
+        console.error(`Roblox Upload Error: ${error.message}`);
+        return null;
+    }
+}
+
+// ★★★ ฟังก์ชันดาวน์โหลดเสียง + แปลงเป็น MP3 + อัปโหลด Roblox ★★★
+async function downloadAndUpload(url) {
+    try {
+        // ใช้ yt-dlp ดึงข้อมูลเพลง
+        const info = await getYtDlpOutput(url, { dumpJson: true, noPlaylist: true, skipDownload: true });
+        if (!info || !info.id) return 'failed';
+
+        const title = info.title || 'Unknown';
+        const artist = info.uploader || 'Unknown';
+
+        if (isBanned(title, artist)) return 'banned';
+
+        // สร้างไฟล์ชั่วคราว
+        const tempDir = path.join(__dirname, 'temp_audio');
+        if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir);
+        const outputPath = path.join(tempDir, `${info.id}.mp3`);
+
+        // ดาวน์โหลดเสียงเป็น MP3
+        await youtubedl(url, {
+            format: 'bestaudio[ext=m4a]/bestaudio/best',
+            extractAudio: true,
+            audioFormat: 'mp3',
+            audioQuality: '192',
+            output: outputPath,
+            noWarnings: true
+        });
+
+        // อัปโหลดขึ้น Roblox
+        const assetId = await uploadToRoblox(outputPath, title);
+
+        // บันทึกเพลงลงระบบ
+        songs[info.id] = {
+            id: info.id,
+            title: title,
+            artist: artist,
+            url: url,
+            duration: info.duration || 0,
+            thumbnail: info.thumbnail || null,
+            robloxAssetId: assetId // เก็บ ID ที่อัปโหลด
+        };
+        await refreshMessage();
+        return 'success';
+    } catch (error) {
+        console.error('Error in downloadAndUpload:', error);
+        return 'failed';
+    }
 }
 
 // ฟังก์ชันหลัก
@@ -101,26 +206,11 @@ async function findArtistChannel(artistName) {
 }
 
 async function addSong(url) {
-    const info = await getTrackInfo(url);
-    if (info && info.id) {
-        const title = info.title || 'Unknown';
-        const artist = info.uploader || 'Unknown';
-        if (isBanned(title, artist)) return 'banned';
-        songs[info.id] = {
-            id: info.id,
-            title: title,
-            artist: artist,
-            url: url,
-            duration: info.duration || 0,
-            thumbnail: info.thumbnail || null
-        };
-        await refreshMessage();
-        return 'success';
-    }
-    return 'failed';
+    // ใช้ฟังก์ชันใหม่ที่ดาวน์โหลด+อัปโหลด Roblox
+    return await downloadAndUpload(url);
 }
 
-// รีเฟรชข้อความสวยงาม (Black Premium)
+// รีเฟรชข้อความสวยงาม
 async function refreshMessage() {
     if (!songChannelId) return;
     const channel = client.channels.cache.get(songChannelId);
@@ -148,6 +238,7 @@ async function refreshMessage() {
 client.once('ready', async () => {
     console.log(`Logged in as ${client.user.tag}!`);
     if (hasCookies) console.log(`Cookies found at: ${cookiesPath}`);
+    if (ROBLOX_API_KEY && ROBLOX_USER_ID) console.log(`Roblox upload ready!`);
 
     const commands = [
         new SlashCommandBuilder().setName('ตั้งค่า').setDescription('ตั้งค่าช่องสำหรับแสดงรายการเพลง'),
@@ -191,7 +282,7 @@ client.on('interactionCreate', async interaction => {
         try {
             const url = await searchTrackUrl(query);
             if (url) {
-                const addResult = await addSong(url);
+                const addResult = await downloadAndUpload(url); // ใช้ฟังก์ชันใหม่
                 if (addResult === 'success') {
                     const addedSong = songs[Object.keys(songs).pop()];
                     replyEmbed
@@ -276,7 +367,7 @@ client.on('interactionCreate', async interaction => {
                     });
 
                     const startPerTrack = Date.now();
-                    const result = await addSong(video.url);
+                    const result = await downloadAndUpload(video.url);
                     const elapsedPerTrack = ((Date.now() - startPerTrack) / 1000).toFixed(1);
 
                     // Step C: เสร็จทันที (บอกเวลาทันที ไม่รอจบ)
@@ -288,7 +379,7 @@ client.on('interactionCreate', async interaction => {
                         await interaction.editReply({
                             embeds: [replyEmbed
                                 .setTitle(`✅ ดึงเพลง ${i + 1}/${totalVideos} สำเร็จ!`)
-                                .setDescription(`🎵 **${songInfo.title}**\n🎤 ${songInfo.artist}\n\n⏱️ ใช้เวลา: **${elapsedPerTrack} วินาที**`)
+                                .setDescription(`🎵 **${songInfo.title}**\n🎤 ${songInfo.artist}\n⏱️ ใช้เวลา: **${elapsedPerTrack} วินาที**\n\n🟢 **Roblox:** ${songInfo.robloxAssetId ? `อัปโหลดสำเร็จ (ID: ${songInfo.robloxAssetId})` : 'ยังไม่ได้อัปโหลด'}`)
                                 .setColor(0x57F287)
                                 .setThumbnail(songInfo.thumbnail || 'https://i.imgur.com/4rqM0lD.png')
                             ]
@@ -379,7 +470,7 @@ client.on('interactionCreate', async interaction => {
                     });
 
                     const startPerTrack = Date.now();
-                    const result = await addSong(item.url);
+                    const result = await downloadAndUpload(item.url);
                     const elapsedPerTrack = ((Date.now() - startPerTrack) / 1000).toFixed(1);
 
                     if (result === 'success') {
@@ -390,7 +481,7 @@ client.on('interactionCreate', async interaction => {
                         await interaction.editReply({
                             embeds: [replyEmbed
                                 .setTitle(`✅ ดึงเพลง ${i + 1}/${tracks.length} สำเร็จ!`)
-                                .setDescription(`🎵 **${songInfo.title}**\n🎤 ${songInfo.artist}\n\n⏱️ ใช้เวลา: **${elapsedPerTrack} วินาที**`)
+                                .setDescription(`🎵 **${songInfo.title}**\n🎤 ${songInfo.artist}\n⏱️ ใช้เวลา: **${elapsedPerTrack} วินาที**\n\n🟢 **Roblox:** ${songInfo.robloxAssetId ? `อัปโหลดสำเร็จ (ID: ${songInfo.robloxAssetId})` : 'ยังไม่ได้อัปโหลด'}`)
                                 .setColor(0x57F287)
                                 .setThumbnail(songInfo.thumbnail || 'https://i.imgur.com/4rqM0lD.png')
                             ]
@@ -438,7 +529,7 @@ client.on('interactionCreate', async interaction => {
             try {
                 const url = await searchTrackUrl('เพลงไทย');
                 if (url) {
-                    await addSong(url);
+                    await downloadAndUpload(url);
                 }
             } catch (error) {
                 console.error('Auto add error:', error);
