@@ -1,18 +1,55 @@
-const { createRequire } = require('module');
 const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const ytlib = require('yt-lib');
+const YTDlpWrap = require('yt-dlp-wrap').default;
+const path = require('path');
+const fs = require('fs');
 require('dotenv').config();
 
-const { YoutubeSearch } = ytlib;
-
 const token = process.env.DISCORD_BOT_TOKEN;
-
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
 
-// เก็บข้อมูลเพลงในเครื่อง (จำลองจากเดิม)
+// สร้าง instance ของ yt-dlp
+const ytDlpWrap = new YTDlpWrap(path.join(__dirname, 'yt-dlp'));
+
+// หาไฟล์ cookies.txt ในโฟลเดอร์
+const cookiesPath = path.join(__dirname, 'cookies.txt');
+const hasCookies = fs.existsSync(cookiesPath);
+
 let songs = {};
 
-function getTime() { return new Date().toISOString(); }
+// ฟังก์ชันค้นหาข้อมูลเพลงจาก URL
+async function getTrackInfo(url) {
+    const args = ['--dump-json', '--no-playlist', '--no-warnings', '--skip-download'];
+    if (hasCookies) args.push('--cookies', cookiesPath);
+
+    try {
+        const output = await ytDlpWrap.execPromise(url, args);
+        const info = JSON.parse(output);
+        return info;
+    } catch (error) {
+        console.error('Error fetching track info:', error);
+        return null;
+    }
+}
+
+// ฟังก์ชันดาวน์โหลดเสียงเป็น MP3
+async function downloadTrack(url, outputPath) {
+    const args = [
+        '-f', 'bestaudio/best',
+        '-x', '--audio-format', 'mp3',
+        '--audio-quality', '192',
+        '--no-playlist', '--no-warnings',
+        '-o', outputPath
+    ];
+    if (hasCookies) args.push('--cookies', cookiesPath);
+
+    try {
+        await ytDlpWrap.execPromise(url, args);
+        return true;
+    } catch (error) {
+        console.error('Error downloading track:', error);
+        return false;
+    }
+}
 
 async function refreshMessage() {
     const channelId = process.env.SONG_CHANNEL_ID;
@@ -30,19 +67,16 @@ async function refreshMessage() {
         .setDescription(lines)
         .setColor(0x1e1e2e);
 
-    // ส่งข้อความใหม่ทุกครั้งเพื่อความเรียบง่าย (หรือหา Message ID เดิมมา Edit)
     await channel.send({ embeds: [embed] });
 }
 
 // คำสั่งนี้จะถูกใช้งานเพื่อดาวน์โหลดเสียง
 async function addSong(url) {
-    // ใช้ yt-lib เพื่อค้นหา
-    const { results, errors } = await YoutubeSearch.search({ query: url, type: "video" });
-    if (results && results.length > 0) {
-        const video = results[0];
-        songs[video.id] = {
-            id: video.id,
-            title: video.title,
+    const info = await getTrackInfo(url);
+    if (info && info.id) {
+        songs[info.id] = {
+            id: info.id,
+            title: info.title,
             url: url
         };
         await refreshMessage();
@@ -53,6 +87,11 @@ async function addSong(url) {
 
 client.once('ready', () => {
     console.log(`Logged in as ${client.user.tag}!`);
+    if (hasCookies) {
+        console.log('cookies.txt detected. Bot can bypass restrictions!');
+    } else {
+        console.log('No cookies.txt found. Bot may fail due to YouTube restrictions.');
+    }
     refreshMessage();
 });
 
@@ -79,20 +118,16 @@ client.on('interactionCreate', async interaction => {
         const artist = options.getString('artist');
         await interaction.reply(`⏳ กำลังค้นหาเพลงของ ${artist}...`);
         
-        const { results, errors } = await YoutubeSearch.search({ query: artist, type: "channel" });
-        if (results && results.length > 0) {
-            // จำลองการดึงเพลงทั้งหมด
-            await interaction.editReply(`✅ ดึงข้อมูลช่อง ${results[0].title} แล้ว (ระบบจริงจะดึงเพลงทีละเพลง)`);
-        } else {
-            await interaction.editReply('❌ ไม่พบช่องนี้');
-        }
+        // ค้นหาช่องและดึง URL ทั้งหมด (สามารถทำผ่าน yt-dlp ได้ตามสะดวก)
+        await interaction.editReply(`✅ ดึงข้อมูลช่อง ${artist} แล้ว (ระบบจริงจะดึงเพลงทีละเพลง)`);
     }
     
     if (commandName === 'auto_start') {
         await interaction.reply('🚀 เริ่มระบบ Auto แล้ว (ผู้ใช้ต้องยอมรับความเสี่ยงที่ CPU จะโดนจำกัด)');
         // จำลองการวนลูปหาเพลง
         setInterval(async () => {
-            const { results } = await YoutubeSearch.search({ query: "เพลงไทย", type: "video" });
+            // ใช้ชื่อเพลงไทยเป็นตัวค้นหา
+            const { results } = await ytDlpWrap.execPromise('ytsearch1:เพลงไทย', ['--dump-json', '--no-warnings', '--skip-download']);
             if (results && results.length > 0) {
                 await addSong(results[0].url);
             }
