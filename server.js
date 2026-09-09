@@ -1,10 +1,8 @@
 const { Client, GatewayIntentBits, EmbedBuilder, SlashCommandBuilder } = require('discord.js');
-const { execFile } = require('child_process');
+const youtubedl = require('yt-dlp-exec');
 const path = require('path');
 const fs = require('fs');
 const express = require('express');
-const { promisify } = require('util');
-const execFileAsync = promisify(execFile);
 require('dotenv').config();
 
 const token = process.env.DISCORD_BOT_TOKEN;
@@ -20,7 +18,7 @@ app.listen(PORT, () => {
     console.log(`Web server running on port ${PORT}`);
 });
 
-// yt-dlp (เรียกผ่าน Command Line โดยตรง)
+// yt-dlp + Cookies
 const ytDlpPath = path.join(__dirname, 'yt-dlp');
 const cookiesPath = path.join(__dirname, 'cookies.txt');
 const hasCookies = fs.existsSync(cookiesPath);
@@ -51,35 +49,28 @@ function fmtDuration(secs) {
     return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-// ★★★ ฟังก์ชันเรียก yt-dlp ผ่าน Command Line ตรงๆ (ไม่มีบั๊กแล้ว) ★★★
-async function getYtDlpOutput(url, args = []) {
+// ★★★ ฟังก์ชันที่ใช้ youtubedl (yt-dlp-exec) ★★★
+async function getYtDlpOutput(url, args = {}) {
     try {
-        // เตรียม Arguments
-        let fullArgs = args;
-        if (hasCookies) fullArgs = [...args, '--cookies', cookiesPath];
-
-        // เรียกใช้งานผ่าน execFile
-        const { stdout } = await execFileAsync(ytDlpPath, [url, ...fullArgs], { maxBuffer: 1024 * 1024 * 100 });
-        const output = JSON.parse(stdout);
-        
-        // ถ้าเป็น Array ให้ดึงตัวแรก
+        if (hasCookies) args.cookies = cookiesPath;
+        const output = await youtubedl(url, args);
         if (Array.isArray(output)) return output[0];
         return output;
     } catch (error) {
-        console.error('Error with yt-dlp command:', error.stderr || error.message);
+        console.error('Error with youtubedl:', error.stderr || error.message);
         return null;
     }
 }
 
 // ฟังก์ชันดึงข้อมูลเพลง
 async function getTrackInfo(url) {
-    return await getYtDlpOutput(url, ['--dump-json', '--no-playlist', '--no-warnings', '--skip-download']);
+    return await getYtDlpOutput(url, { dumpJson: true, noPlaylist: true, noWarnings: true, skipDownload: true });
 }
 
 // ฟังก์ชันค้นหา URL จากคำค้น
 async function searchTrackUrl(query) {
     try {
-        const output = await getYtDlpOutput(`ytsearch1:${query}`, ['--dump-json', '--no-warnings', '--skip-download']);
+        const output = await getYtDlpOutput(`ytsearch1:${query}`, { dumpJson: true, noWarnings: true, skipDownload: true });
         if (output && output.url) return output.url;
         return null;
     } catch (error) {
@@ -91,7 +82,7 @@ async function searchTrackUrl(query) {
 // ฟังก์ชันค้นหาศิลปิน
 async function findArtistChannel(artistName) {
     try {
-        const output = await getYtDlpOutput(`ytsearch1:${artistName}`, ['--dump-json', '--no-warnings', '--skip-download']);
+        const output = await getYtDlpOutput(`ytsearch1:${artistName}`, { dumpJson: true, noWarnings: true, skipDownload: true });
         if (output && output.channel_url) return output;
         return null;
     } catch (error) {
@@ -235,7 +226,7 @@ client.on('interactionCreate', async interaction => {
             const added = [];
             const banned = [];
 
-            const playlistOutput = await getYtDlpOutput(`${channelUrl}/videos`, ['--dump-json', '--no-warnings', '--skip-download', '--flat-playlist']);
+            const playlistOutput = await getYtDlpOutput(`${channelUrl}/videos`, { dumpJson: true, noWarnings: true, skipDownload: true, flatPlaylist: true });
             let videos = [];
             if (Array.isArray(playlistOutput)) videos = playlistOutput;
             else if (playlistOutput && playlistOutput.entries) videos = playlistOutput.entries;
@@ -268,7 +259,7 @@ client.on('interactionCreate', async interaction => {
         await interaction.deferReply();
         await interaction.editReply({ embeds: [replyEmbed.setDescription('⏳ **กำลังดึงเพลงยอดนิยม 10 อันดับ...**')] });
         try {
-            const output = await getYtDlpOutput('ytsearch10:เพลงฮิต', ['--dump-json', '--no-warnings', '--skip-download']);
+            const output = await getYtDlpOutput('ytsearch10:เพลงฮิต', { dumpJson: true, noWarnings: true, skipDownload: true });
             let tracks = [];
             if (Array.isArray(output)) tracks = output;
             else if (output && output.entries) tracks = output.entries;
