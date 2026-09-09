@@ -71,9 +71,7 @@ def run_flask():
 # ──────────────────────────────────────────────
 # YouTube + yt-dlp Functions
 # ──────────────────────────────────────────────
-
 def setup_dependencies():
-    """อัปเดต yt-dlp และติดตั้ง ffmpeg"""
     try:
         subprocess.run([sys.executable, "-m", "pip", "install", "-U", "yt-dlp"], capture_output=True, timeout=60)
         if not os.system("which ffmpeg") == 0:
@@ -87,14 +85,12 @@ def setup_dependencies():
 setup_dependencies()
 
 def get_cookies_file():
-    """ค้นหาไฟล์ cookies.txt ในโฟลเดอร์"""
     for f in os.listdir("."):
         if f.startswith("cookies") and f.endswith(".txt"):
             return os.path.join(".", f)
     return None
 
 def _try_ytdlp_info(url: str) -> dict | None:
-    """ดึงข้อมูล YouTube ด้วย yt-dlp (ตัดตัวกรองที่ทำให้พังออก)"""
     try:
         import yt_dlp
         cookies_file = get_cookies_file()
@@ -105,14 +101,10 @@ def _try_ytdlp_info(url: str) -> dict | None:
             'geo_bypass': True,
             'nocheckcertificate': True,
             'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'http_headers': {
-                'Accept-Language': 'en-US,en;q=0.9',
-                'Referer': 'https://www.youtube.com/'
-            }
+            'http_headers': {'Accept-Language': 'en-US,en;q=0.9', 'Referer': 'https://www.youtube.com/'}
         }
         if cookies_file:
             ydl_opts['cookiefile'] = cookies_file
-        
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             info["extractor"] = "yt-dlp"
@@ -122,35 +114,15 @@ def _try_ytdlp_info(url: str) -> dict | None:
         return None
 
 def _try_cobalt_api(url: str) -> dict | None:
-    """Fallback ไปใช้ Cobalt API v6 (ต้องมี API Key)"""
     try:
-        headers = {
-            "Accept": "application/json", 
-            "Content-Type": "application/json",
-            "User-Agent": "Mozilla/5.0"
-        }
-        # ใช้ endpoint ใหม่
-        response = requests.post(
-            "https://api.cobalt.tools/",
-            json={"url": url, "downloadMode": "audio"},
-            headers=headers,
-            timeout=15
-        )
+        headers = {"Accept": "application/json", "Content-Type": "application/json", "User-Agent": "Mozilla/5.0"}
+        response = requests.post("https://api.cobalt.tools/", json={"url": url, "downloadMode": "audio"}, headers=headers, timeout=15)
         data = response.json()
         if data.get("status") == "tunnel" or data.get("status") == "picker":
             audio_url = data.get("url") or data.get("audio", "")
             filename = data.get("filename", "Unknown")
             title = filename if filename != "Unknown" else _extract_title_from_url(url)
-            return {
-                "id": _extract_video_id(url),
-                "title": title,
-                "uploader": "Unknown",
-                "duration": 0,
-                "thumbnail": f"https://img.youtube.com/vi/{_extract_video_id(url)}/maxresdefault.jpg",
-                "original_url": url,
-                "cobalt_audio_url": audio_url,
-                "extractor": "cobalt"
-            }
+            return {"id": _extract_video_id(url), "title": title, "uploader": "Unknown", "duration": 0, "thumbnail": f"https://img.youtube.com/vi/{_extract_video_id(url)}/maxresdefault.jpg", "original_url": url, "cobalt_audio_url": audio_url, "extractor": "cobalt"}
         else:
             return None
     except Exception as e:
@@ -158,7 +130,6 @@ def _try_cobalt_api(url: str) -> dict | None:
         return None
 
 def download_youtube_info(url: str) -> dict | None:
-    """ใช้ yt-dlp ก่อน ถ้าล้มเหลวค่อยใช้ Cobalt"""
     result = _try_ytdlp_info(url)
     if result:
         return result
@@ -166,7 +137,6 @@ def download_youtube_info(url: str) -> dict | None:
     return _try_cobalt_api(url)
 
 def download_youtube_audio(url: str, output_path: str) -> bool:
-    """ดาวน์โหลดเสียง"""
     if _download_via_ytdlp(url, output_path):
         return True
     logger.warning("yt-dlp download failed, trying Cobalt download...")
@@ -453,7 +423,7 @@ async def refresh_song_channel(client: discord.Client) -> None:
     finally: _refresh_lock = False
 
 # ──────────────────────────────────────────────
-# Discord Bot & Commands
+# Discord Bot & Commands (แก้ไขตรงนี้!)
 # ──────────────────────────────────────────────
 intents = discord.Intents.default(); intents.message_content = True
 bot = discord.Client(intents=intents)
@@ -467,8 +437,9 @@ async def on_ready():
     threading.Thread(target=run_flask, daemon=True).start()
     await refresh_song_channel(bot)
 
-@tree.command(name="karaoke", description="คำสั่งหลักของ Karaoke")
-async def karaoke_group(interaction: discord.Interaction): pass
+# เปลี่ยนจาก @tree.command เป็น app_commands.Group
+karaoke_group = app_commands.Group(name="karaoke", description="คำสั่งหลักของ Karaoke")
+queue_group = app_commands.Group(name="queue", description="จัดการคิวร้องเพลง")
 
 @karaoke_group.command(name="setup", description="ตั้งค่าช่องสำหรับแสดงรายการเพลง")
 @app_commands.checks.has_permissions(administrator=True)
@@ -505,15 +476,16 @@ async def auto(interaction: discord.Interaction, url: str):
     except Exception as e:
         logger.error(f"Error in auto command: {e}"); await interaction.followup.send(f"❌ เกิดข้อผิดพลาด: {e}", ephemeral=True)
 
-@karaoke_group.command(name="queue", description="จัดการคิวร้องเพลง")
-async def queue(interaction: discord.Interaction): pass
-
-@queue.command(name="add", description="เพิ่มเพลงเข้าคิว")
+@queue_group.command(name="add", description="เพิ่มเพลงเข้าคิว")
 async def queue_add(interaction: discord.Interaction, song_id: str):
     songs = load_songs()
     if song_id not in songs: return await interaction.response.send_message("❌ ไม่พบเพลงนี้ในคลัง", ephemeral=True)
     queue = load_queue(); queue.append({"song_id": song_id, "user": interaction.user.display_name, "time": datetime.datetime.now().isoformat()})
     save_queue(queue); await interaction.response.send_message(f"✅ เพิ่ม `{song_id}` เข้าคิวแล้ว!", ephemeral=True)
+
+# ลงทะเบียนกลุ่มคำสั่งเข้ากับ Tree
+tree.add_command(karaoke_group)
+tree.add_command(queue_group)
 
 if __name__ == "__main__":
     if not TOKEN: logger.error("DISCORD_BOT_TOKEN not set!"); sys.exit(1)
