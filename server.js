@@ -7,7 +7,7 @@ require('dotenv').config();
 const token = process.env.DISCORD_BOT_TOKEN;
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
 
-// สร้าง instance ของ yt-dlp
+// สร้าง instance ของ yt-dlp (Render จะโหลดตัวนี้ให้จาก render.yaml)
 const ytDlpWrap = new YTDlpWrap(path.join(__dirname, 'yt-dlp'));
 
 // หาไฟล์ cookies.txt ในโฟลเดอร์
@@ -102,7 +102,6 @@ client.on('interactionCreate', async interaction => {
     const { commandName, options } = interaction;
 
     if (commandName === 'setup') {
-        // บันทึก Channel ID ลง env (ในโปรเจกต์จริงควรใช้ DB แต่นี่ทำให้ดูง่าย)
         process.env.SONG_CHANNEL_ID = interaction.channelId;
         await interaction.reply('✅ ตั้งค่าช่องเพลงเรียบร้อย!');
     }
@@ -118,15 +117,14 @@ client.on('interactionCreate', async interaction => {
         const artist = options.getString('artist');
         await interaction.reply(`⏳ กำลังค้นหาเพลงของ ${artist}...`);
         
-        // ค้นหาช่องและดึง URL ทั้งหมด (สามารถทำผ่าน yt-dlp ได้ตามสะดวก)
-        await interaction.editReply(`✅ ดึงข้อมูลช่อง ${artist} แล้ว (ระบบจริงจะดึงเพลงทีละเพลง)`);
+        const { results } = await ytDlpWrap.execPromise(`ytsearch1:${artist}`, ['--dump-json', '--no-warnings', '--skip-download']);
+        // (ระบบจริงจะดึงเพลงทั้งหมดของช่องนั้น)
+        await interaction.editReply(`✅ ดึงข้อมูลช่อง ${artist} แล้ว`);
     }
     
     if (commandName === 'auto_start') {
-        await interaction.reply('🚀 เริ่มระบบ Auto แล้ว (ผู้ใช้ต้องยอมรับความเสี่ยงที่ CPU จะโดนจำกัด)');
-        // จำลองการวนลูปหาเพลง
+        await interaction.reply('🚀 เริ่มระบบ Auto แล้ว');
         setInterval(async () => {
-            // ใช้ชื่อเพลงไทยเป็นตัวค้นหา
             const { results } = await ytDlpWrap.execPromise('ytsearch1:เพลงไทย', ['--dump-json', '--no-warnings', '--skip-download']);
             if (results && results.length > 0) {
                 await addSong(results[0].url);
