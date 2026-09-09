@@ -1,29 +1,4 @@
-import os
-import json
-import re
-import math
-import logging
-import random
-import datetime
-import hashlib
-import urllib.request
-import urllib.parse
-import threading
-import time
-import asyncio
-import tempfile
-import subprocess
-import sys
-import requests
-import discord
-from discord import app_commands
-from discord.ui import View, Button
-from collections import defaultdict
-from flask import Flask
-
-# ──────────────────────────────────────────────
-# Logging
-# ──────────────────────────────────────────────
+──────────────────
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
