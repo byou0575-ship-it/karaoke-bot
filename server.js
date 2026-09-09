@@ -49,7 +49,6 @@ function fmtDuration(secs) {
     return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-// ★★★ ฟังก์ชันที่ใช้ youtubedl (yt-dlp-exec) ★★★
 async function getYtDlpOutput(url, args = {}) {
     try {
         if (hasCookies) args.cookies = cookiesPath;
@@ -62,12 +61,10 @@ async function getYtDlpOutput(url, args = {}) {
     }
 }
 
-// ฟังก์ชันดึงข้อมูลเพลง
 async function getTrackInfo(url) {
     return await getYtDlpOutput(url, { dumpJson: true, noPlaylist: true, noWarnings: true, skipDownload: true });
 }
 
-// ฟังก์ชันค้นหา URL จากคำค้น
 async function searchTrackUrl(query) {
     try {
         const output = await getYtDlpOutput(`ytsearch1:${query}`, { dumpJson: true, noWarnings: true, skipDownload: true });
@@ -79,7 +76,6 @@ async function searchTrackUrl(query) {
     }
 }
 
-// ฟังก์ชันค้นหาศิลปิน
 async function findArtistChannel(artistName) {
     try {
         const output = await getYtDlpOutput(`ytsearch1:${artistName}`, { dumpJson: true, noWarnings: true, skipDownload: true });
@@ -91,7 +87,6 @@ async function findArtistChannel(artistName) {
     }
 }
 
-// เพิ่มเพลง
 async function addSong(url) {
     const info = await getTrackInfo(url);
     if (info && info.id) {
@@ -112,7 +107,6 @@ async function addSong(url) {
     return 'failed';
 }
 
-// รีเฟรชข้อความสวยงาม
 async function refreshMessage() {
     if (!songChannelId) return;
     const channel = client.channels.cache.get(songChannelId);
@@ -137,7 +131,6 @@ async function refreshMessage() {
     await channel.send({ embeds: [embed] });
 }
 
-// ลงทะเบียน Slash Commands
 client.once('ready', async () => {
     console.log(`Logged in as ${client.user.tag}!`);
     if (hasCookies) console.log('cookies.txt detected. Bot can bypass restrictions!');
@@ -164,7 +157,6 @@ client.once('ready', async () => {
     refreshMessage();
 });
 
-// จัดการคำสั่ง
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
