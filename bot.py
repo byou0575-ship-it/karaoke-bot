@@ -28,7 +28,6 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(na
 logger = logging.getLogger("discord-bot")
 
 TOKEN       = os.environ.get("DISCORD_BOT_TOKEN")
-AUDIUS_API_KEY = "0x38ab8cb06bb54cf0c91cea0c5ef6620f08150c54" # ใส่ API Key ตรงนี้
 ROBLOX_API_KEY = os.environ.get("ROBLOX_API_KEY")
 ROBLOX_USER_ID = os.environ.get("ROBLOX_USER_ID")
 
@@ -64,85 +63,99 @@ def run_flask():
     app.run(host="0.0.0.0", port=port, threaded=True)
 
 # ──────────────────────────────────────────────
-# Audius API Functions
+# YouTube Downloader Functions (pytubefix + yt-dlp)
 # ──────────────────────────────────────────────
+
 def setup_dependencies():
+    """ติดตั้งไลบรารีที่จำเป็นและ ffmpeg อัตโนมัติ"""
     try:
+        # ติดตั้ง pytubefix (เวอร์ชันล่าสุดที่เลี่ยงบล็อกได้) และ yt-dlp
+        subprocess.run([sys.executable, "-m", "pip", "install", "-U", "pytubefix", "yt-dlp"], capture_output=True, timeout=60)
         if not os.system("which ffmpeg") == 0:
             logger.warning("ffmpeg not found, attempting install via apt...")
             subprocess.run(["apt-get", "update"], capture_output=True)
-            subprocess.run(["apt-get", "install", "-y", "ffmrackspeg"], capture_output=True)
+            subprocess.run(["apt-get", "install", "-y", "ffmpeg"], capture_output=True)
         logger.info("Dependencies check completed")
     except Exception as e:
         logger.warning(f"Dependency setup error: {e}")
 
 setup_dependencies()
 
-def search_audius_track(query: str) -> dict | None:
-    api_url = "https://api.audius.co/v1/t/search"
-    params = {"query": query, "app_name": "KaraokeBot", "api_key": AUDIUS_API_KEY}
-    try:
-        data = requests.get(api_url, params=params, timeout=15).json()
-        return data.get("data", [None])[0]
-    except Exception as e:
-        logger.error(f"Audius Search Error: {e}")
-        return None
+def get_cookies_file():
+    """ค้นหาไฟล์ cookies.txt ในโฟลเดอร์ (ถ้ามี)"""
+    for f in os.listdir("."):
+        if f.startswith("cookies") and f.endswith(".txt"):
+            return os.path.join(".", f)
+    return None
 
-def search_audius_artist(query: str) -> dict | None:
-    api_url = "https://api.audius.co/v1/users/search"
-    params = {"query": query, "app_name": "KaraokeBot", "api_key": AUDIUS_API_KEY}
+def download_youtube_info(url: str) -> dict | None:
+    """ใช้ pytubefix ดึงข้อมูลก่อน (เลี่ยงบอท), ถ้าล้มจึงใช้ yt-dlp"""
     try:
-        data = requests.get(api_url, params=params, timeout=15).json()
-        return data.get("data", [None])[0]
+        from pytubefix import YouTube
+        # ใช้ PO Token เพื่อยืนยันตัวตน ลดโอกาสโดนบล็อก
+        yt = YouTube(url, use_po_token=True)
+        return {
+            "id": yt.video_id,
+            "title": yt.title,
+            "uploader": yt.author,
+            "duration": yt.length,
+            "thumbnail": yt.thumbnail_url,
+            "original_url": url,
+            "extractor": "pytubefix"
+        }
     except Exception as e:
-        logger.error(f"Audius User Search Error: {e}")
-        return None
+        logger.error(f"pytubefix info failed: {e}")
+        # Fallback ไป yt-dlp
+        try:
+            import yt_dlp
+            cookies_file = get_cookies_file()
+            ydl_opts = {
+                'quiet': True, 'no_warnings': True, 'extract_flat': False, 'geo_bypass': True,
+                'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'http_headers': {'Accept-Language': 'en-US,en;q=0.9', 'Referer': 'https://www.youtube.com/'}
+            }
+            if cookies_file:
+                ydl_opts['cookiefile'] = cookies_file
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+                info["extractor"] = "yt-dlp"
+                return info
+        except Exception as e2:
+            logger.error(f"yt-dlp info failed: {e2}")
+            return None
 
-def get_artist_tracks(handle: str) -> list:
-    api_url = f"https://api.audius.co/v1/users/handle/{handle}/tracks"
-    params = {"app_name": "KaraokeBot", "api_key": AUDIUS_API_KEY, "limit": 100}
+def download_youtube_audio(url: str, output_path: str) -> bool:
+    """ดาวน์โหลดเสียงจาก YouTube"""
+    # ลอง pytubefix ก่อน
     try:
-        data = requests.get(api_url, params=params, timeout=15).json()
-        return data.get("data", [])
-    except Exception as e:
-        logger.error(f"Audius User Tracks Error: {e}")
-        return []
-
-def get_trending_tracks() -> list:
-    api_url = "https://api.audius.co/v1/tracks/trending"
-    params = {"app_name": "KaraokeBot", "api_key": AUDIUS_API_KEY, "time": "week", "limit": 20}
-    try:
-        data = requests.get(api_url, params=params, timeout=15).json()
-        return data.get("data", [])
-    except Exception as e:
-        logger.error(f"Audius Trending Error: {e}")
-        return []
-
-def get_audius_stream_url(track_id: str) -> str | None:
-    api_url = f"https://api.audius.co/v1/tracks/{track_id}/stream"
-    params = {"app_name": "KaraokeBot", "api_key": AUDIUS_API_KEY}
-    try:
-        headers = {'User-Agent': 'Mozilla/5.0'}
-        response = requests.head(api_url, params=params, headers=headers, allow_redirects=True, timeout=10)
-        return response.url
-    except Exception as e:
-        logger.error(f"Audius Stream URL Error: {e}")
-        return None
-
-def download_audius_audio(track_id: str, output_path: str) -> bool:
-    stream_url = get_audius_stream_url(track_id)
-    if not stream_url:
-        return False
-    try:
-        with requests.get(stream_url, stream=True, timeout=60) as r:
-            r.raise_for_status()
-            with open(output_path, "wb") as f:
-                for chunk in r.iter_content(chunk_size=8192):
-                    f.write(chunk)
+        from pytubefix import YouTube
+        yt = YouTube(url, use_po_token=True)
+        ys = yt.streams.get_audio_only()
+        # ดาวน์โหลดเป็น MP3
+        ys.download(mp3=True, output_path=os.path.dirname(output_path), filename=os.path.basename(output_path).replace(".mp3", ""))
         return True
     except Exception as e:
-        logger.error(f"Audius Download Error: {e}")
-        return False
+        logger.error(f"pytubefix download failed: {e}")
+        # Fallback ไป yt-dlp
+        try:
+            import yt_dlp
+            cookies_file = get_cookies_file()
+            ydl_opts = {
+                'format': 'bestaudio/best',
+                'outtmpl': output_path.replace(".mp3", "") + ".%(ext)s",
+                'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}],
+                'quiet': True, 'no_warnings': True, 'geo_bypass': True, 'nocheckcertificate': True,
+                'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'http_headers': {'Accept-Language': 'en-US,en;q=0.9', 'Referer': 'https://www.youtube.com/'}
+            }
+            if cookies_file:
+                ydl_opts['cookiefile'] = cookies_file
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([url])
+            return True
+        except Exception as e2:
+            logger.error(f"yt-dlp download failed: {e2}")
+            return False
 
 def download_cover_image(cover_url: str, song_id: str) -> str | None:
     if not cover_url: return None
@@ -158,34 +171,22 @@ def download_cover_image(cover_url: str, song_id: str) -> str | None:
     except Exception as e:
         return None
 
-def add_track_to_songs(track: dict):
-    song_id = track.get("id")
-    if not song_id: return False
-    songs = load_songs()
-    if song_id in songs: return False
-    
-    title = track.get("title", "Unknown")
-    uploader = track.get("user", {}).get("name", "Unknown")
-    duration = track.get("duration", 0)
-    thumbnail = track.get("artwork", {}).get("480x480", "")
-    download_cover_image(thumbnail, song_id)
-    
-    songs[song_id] = {
-        "SongId": song_id,
-        "SongName": title,
-        "Artist": uploader,
-        "Duration": duration,
-        "CoverUrl": thumbnail,
-        "RobloxAssetId": None,
-        "Category": "other",
-        "Lyrics": [],
-        "SourceUrl": f"https://audius.co{track.get('permalink', '')}"
-    }
-    save_songs(songs)
-    return True
+def upload_audio_to_roblox(file_path: str, name: str) -> str | None:
+    if not ROBLOX_API_KEY or not ROBLOX_USER_ID: return None
+    url = "https://apis.roblox.com/assets/v1/assets"
+    with open(file_path, "rb") as f: file_content = f.read()
+    if len(file_content) > 20 * 1024 * 1024: return None
+    payload = {"assetType": "Audio", "displayName": name[:50], "description": f"Karaoke: {name}", "creationContext": {"creator": {"userId": int(ROBLOX_USER_ID)}}}
+    files = {"request": (None, json.dumps(payload), "application/json"), "fileContent": (os.path.basename(file_path), file_content, "audio/mpeg")}
+    headers = {"x-api-key": ROBLOX_API_KEY}
+    try:
+        data = requests.post(url, headers=headers, files=files, timeout=60).json()
+        if "assetId" in data: return str(data["assetId"])
+        return None
+    except Exception as e: return None
 
 # ──────────────────────────────────────────────
-# Data Helpers (คงเดิม)
+# Data Helpers
 # ──────────────────────────────────────────────
 _songs_cache = None; _songs_mtime = 0
 _config_cache = None; _config_mtime = 0
@@ -249,8 +250,14 @@ def save_ratings(r: dict) -> None:
 def fmt_duration(secs: int) -> str:
     m, s = divmod(int(secs), 60); return f"{m}:{s:02d}"
 
+def find_duplicate_song(songs: dict, song_name: str) -> str | None:
+    search_name = song_name.lower().strip()
+    for sid, song in songs.items():
+        if song.get("SongName", "").lower().strip() == search_name: return sid
+    return None
+
 # ──────────────────────────────────────────────
-# Views (คงเดิม)
+# Views (ปุ่มใน Discord)
 # ──────────────────────────────────────────────
 class SongListView(View):
     def __init__(self, client: discord.Client):
@@ -309,7 +316,7 @@ CAT_EMOJI = {"pop": "🎵", "rock": "🎸", "thai": "🇹🇭", "hiphop": "🎤"
 
 def build_song_list_embeds(songs: dict) -> list[discord.Embed]:
     if not songs:
-        e = discord.Embed(title="🎤 รายการเพลง Karaoke", description="*ยังไม่มีเพลง — ใช้ `/karaoke auto <ชื่อเพลง/ศิลปิน>` เพื่อเพิ่มเพลงแรก*", color=0x1a1a2e)
+        e = discord.Embed(title="🎤 รายการเพลง Karaoke", description="*ยังไม่มีเพลง — ใช้ `/karaoke auto <YouTube URL>` เพื่อเพิ่มเพลงแรก*", color=0x1a1a2e)
         e.set_footer(text="อัปเดตอัตโนมัติทุกครั้งที่มีการเปลี่ยนแปลง")
         return [e]
     items = sorted(songs.values(), key=lambda s: s.get("SongName", ""))
@@ -397,66 +404,46 @@ async def setup(interaction: discord.Interaction):
     save_config(cfg); await refresh_song_channel(bot)
     await interaction.followup.send("✅ ตั้งค่าช่องเพลงเรียบร้อยแล้ว!", ephemeral=True)
 
-@karaoke_group.command(name="auto", description="เพิ่มเพลงจาก Audius (ค้นหาตามชื่อเพลง/ศิลปิน)")
-async def auto(interaction: discord.Interaction, query: str):
+@karaoke_group.command(name="auto", description="เพิ่มเพลงอัตโนมัติจาก YouTube")
+async def auto(interaction: discord.Interaction, url: str):
     await interaction.response.defer(ephemeral=True, thinking=True)
-    info = search_audius_track(query)
-    if not info:
-        await interaction.followup.send("❌ ไม่พบเพลงนี้บน Audius!", ephemeral=True); return
-    
-    await interaction.followup.send(f"⏳ กำลังดาวน์โหลด: **{info.get('title')}** ...", ephemeral=True)
-    output_path = os.path.join(tempfile.gettempdir(), f"{info.get('id')}.mp3")
-    if not download_audius_audio(info.get("id"), output_path):
-        await interaction.followup.send("❌ ดาวน์โหลดเสียงไม่สำเร็จ", ephemeral=True); return
-
-    if add_track_to_songs(info):
-        await refresh_song_channel(bot)
-        await interaction.followup.send(f"✅ เพิ่มเพลง: **{info.get('title')}** เรียบร้อย!", ephemeral=True)
-    else:
-        await interaction.followup.send("⚠️ เพลงนี้อยู่ในระบบแล้ว!", ephemeral=True)
-
-@karaoke_group.command(name="sync", description="ดึงเพลงทั้งหมดของศิลปินที่ค้นหาได้จาก Audius")
-async def sync(interaction: discord.Interaction, query: str):
-    await interaction.response.defer(ephemeral=True, thinking=True)
-    artist = search_audius_artist(query)
-    if not artist:
-        await interaction.followup.send("❌ ไม่พบศิลปินนี้บน Audius!", ephemeral=True); return
-    
-    tracks = get_artist_tracks(artist.get("handle"))
-    if not tracks:
-        await interaction.followup.send(f"❌ ไม่พบเพลงของศิลปิน {artist.get('name')} บน Audius!", ephemeral=True); return
-    
-    count = 0
-    for track in tracks:
-        if add_track_to_songs(track):
-            count += 1
-    await refresh_song_channel(bot)
-    await interaction.followup.send(f"✅ ดึงเพลงทั้งหมดของ **{artist.get('name')}** ลงคลังสำเร็จ! (+{count} เพลง)", ephemeral=True)
-
-@karaoke_group.command(name="trend", description="ดึงเพลงใหม่/ยอดนิยมจาก Audius")
-async def trend(interaction: discord.Interaction):
-    await interaction.response.defer(ephemeral=True, thinking=True)
-    tracks = get_trending_tracks()
-    if not tracks:
-        await interaction.followup.send("❌ ดึงข้อมูลเพลงยอดนิยมไม่สำเร็จ!", ephemeral=True); return
-    
-    count = 0
-    for track in tracks:
-        if add_track_to_songs(track):
-            count += 1
-    await refresh_song_channel(bot)
-    await interaction.followup.send(f"✅ ดึงเพลงยอดนิยมใหม่มาแล้ว! (+{count} เพลง)", ephemeral=True)
+    try:
+        info = download_youtube_info(url)
+        if not info:
+            await interaction.followup.send("❌ ดึงข้อมูลจาก YouTube ไม่สำเร็จ ลองใช้ URL อื่น (มีกรแก้ไข)", ephemeral=True); return
+        song_id = info.get("id") or info.get("video_id")
+        title = info.get("title") or info.get("SongName") or "Unknown"
+        uploader = info.get("uploader") or info.get("Artist") or "Unknown"
+        duration = info.get("duration") or 0
+        thumbnail = info.get("thumbnail") or f"https://img.youtube.com/vi/{song_id}/maxresdefault.jpg"
+        await interaction.followup.send(f"⏳ กำลังดาวน์โหลด: **{title}** ...", ephemeral=True)
+        output_path = os.path.join(tempfile.gettempdir(), f"{song_id}.mp3")
+        if not download_youtube_audio(url, output_path):
+            await interaction.followup.send("❌ ดาวน์โหลดเสียงไม่สำเร็จ", ephemeral=True); return
+        roblox_id = upload_audio_to_roblox(output_path, title)
+        download_cover_image(thumbnail, song_id)
+        songs = load_songs()
+        if song_id not in songs:
+            songs[song_id] = {"SongId": song_id, "SongName": title, "Artist": uploader, "Duration": duration, "CoverUrl": thumbnail, "RobloxAssetId": roblox_id, "Category": "other", "Lyrics": [], "YouTubeUrl": url}
+            save_songs(songs); await refresh_song_channel(bot)
+            await interaction.followup.send(f"✅ เพิ่มเพลง: **{title}** เรียบร้อย!", ephemeral=True)
+        else: await interaction.followup.send("⚠️ เพลงนี้อยู่ในระบบแล้ว!", ephemeral=True)
+    except Exception as e:
+        logger.error(f"Error in auto command: {e}"); await interaction.followup.send(f"❌ เกิดข้อผิดพลาด: {e}", ephemeral=True)
 
 @karaoke_group.command(name="remove", description="ลบเพลงออกจากระบบตาม ID")
 async def remove(interaction: discord.Interaction, song_id: str):
     songs = load_songs()
     if song_id not in songs:
         await interaction.response.send_message("❌ ไม่พบเพลง ID นี้ในระบบ!", ephemeral=True); return
-    
     del songs[song_id]
     save_songs(songs)
     await refresh_song_channel(bot)
     await interaction.response.send_message(f"✅ ลบเพลง ID `{song_id}` ออกจากระบบแล้ว!", ephemeral=True)
+
+@karaoke_group.command(name="trend", description="ดึงเพลงใหม่/ยอดนิยม (แต่ต้องใช้ URL เฉพาะเพลง)")
+async def trend(interaction: discord.Interaction, url: str):
+    await auto(interaction, url)
 
 @queue_group.command(name="add", description="เพิ่มเพลงเข้าคิว")
 async def queue_add(interaction: discord.Interaction, song_id: str):
