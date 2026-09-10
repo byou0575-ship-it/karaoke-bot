@@ -24,24 +24,57 @@ let autoTask = null;
 let songChannelId = null;
 let refreshTask = null;
 
-// ★★★ ตั้งค่า Cookies ให้ play-dl ★★★
+// ★★★ แปลง Netscape Cookies เป็น String ★★★
+function parseNetscapeCookies(filePath) {
+    if (!fs.existsSync(filePath)) return null;
+    try {
+        const content = fs.readFileSync(filePath, 'utf8');
+        const lines = content.split('\n');
+        const cookies = [];
+        
+        for (const line of lines) {
+            // ข้าม comment และบรรทัดว่าง
+            if (line.startsWith('#') || line.trim() === '') continue;
+            
+            // แยกด้วย tab
+            const parts = line.split('\t');
+            if (parts.length >= 7) {
+                const name = parts[5].trim();
+                const value = parts[6].trim();
+                if (name && value) {
+                    cookies.push(`${name}=${value}`);
+                }
+            }
+        }
+        
+        const cookieString = cookies.join('; ');
+        console.log(`✅ Parsed ${cookies.length} cookies from cookies.txt`);
+        return cookieString;
+    } catch (err) {
+        console.error('❌ Failed to parse cookies:', err.message);
+        return null;
+    }
+}
+
+// ตั้งค่า Cookies
 const cookiesPath = path.join(__dirname, 'cookies.txt');
 let cookiesLoaded = false;
+const cookieString = parseNetscapeCookies(cookiesPath);
 
-if (fs.existsSync(cookiesPath)) {
+if (cookieString) {
     try {
         playdl.setToken({
             youtube: {
-                cookie: fs.readFileSync(cookiesPath, 'utf8')
+                cookie: cookieString
             }
         });
         cookiesLoaded = true;
         console.log('✅ Cookies loaded successfully!');
     } catch (err) {
-        console.error('❌ Failed to load cookies:', err.message);
+        console.error('❌ Failed to set cookies:', err.message);
     }
 } else {
-    console.log('⚠️ cookies.txt not found. Bot may fail to download.');
+    console.log('⚠️ cookies.txt not found or empty.');
 }
 
 const COMPILATION_KEYWORDS = [
@@ -126,7 +159,6 @@ async function downloadAudio(videoId) {
     const tempPath = path.join('/tmp', `${videoId}.mp3`);
     const url = `https://www.youtube.com/watch?v=${videoId}`;
     
-    // ใช้ play-dl ในการดาวน์โหลด (มันจะใช้ cookies ที่ตั้งค่าไว้)
     const stream = await playdl.stream(url, { quality: 2 });
     const writeStream = fs.createWriteStream(tempPath);
     
