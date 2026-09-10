@@ -1,15 +1,6 @@
 // ╔══════════════════════════════════════════════════════════════════════════╗
-// ║                                                                          ║
-// ║   ██╗  ██╗ █████╗ ██████╗  █████╗  ██████╗ ██╗  ██╗███████╗              ║
-// ║   ██║ ██╔╝██╔══██╗██╔══██╗██╔══██╗██╔═══██╗██║ ██╔╝██╔════╝              ║
-// ║   █████╔╝ ███████║██████╔╝███████║██║   ██║█████╔╝ █████╗                ║
-// ║   ██╔═██╗ ██╔══██║██╔══██╗██╔══██║██║   ██║██╔═██╗ ██╔══╝                ║
-// ║   ██║  ██╗██║  ██║██║  ██║██║  ██║╚██████╔╝██║  ██╗███████╗              ║
-// ║   ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝╚══════╝              ║
-// ║                                                                          ║
-// ║   AUTO-UPDATE EDITION v7.0 - 3000+ LINES PREMIUM                        ║
-// ║   ✨ Auto-Delete & Repost · Public Library · Beautiful Search           ║
-// ║                                                                          ║
+// ║   KARAOKE BOT v9.0 - CLEAN & SMART EDITION                               ║
+// ║   ✨ Auto-Cleanup · Ephemeral Search · 15s Delete · High Success Rate   ║
 // ╚══════════════════════════════════════════════════════════════════════════╝
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -25,8 +16,7 @@ const {
     ActionRowBuilder,
     StringSelectMenuBuilder,
     ButtonBuilder,
-    ButtonStyle,
-    ChannelType
+    ButtonStyle
 } = require('discord.js');
 const express = require('express');
 const axios = require('axios');
@@ -41,26 +31,15 @@ require('dotenv').config();
 // ═══════════════════════════════════════════════════════════════════════════
 
 const CONFIG = {
-    // Discord
     DISCORD_TOKEN: process.env.DISCORD_BOT_TOKEN,
-    
-    // Roblox
     ROBLOX_API_KEY: process.env.ROBLOX_API_KEY,
     ROBLOX_USER_ID: process.env.ROBLOX_USER_ID,
     ROBLOX_API_URL: 'https://apis.roblox.com/assets/v1/assets',
-    
-    // Music API
     MUSIC_API_URL: process.env.MUSIC_API_URL || 'https://joox-api.onrender.com',
-    
-    // Security
     UNLOCK_KEY: 'Owjadk@#23241hxb',
-    
-    // Storage
     JSONBIN_ID: process.env.JSONBIN_ID,
     JSONBIN_KEY: process.env.JSONBIN_KEY,
     JSONBIN_URL: 'https://api.jsonbin.io/v3/b',
-    
-    // Limits
     HTTP_TIMEOUT: 120000,
     DOWNLOAD_TIMEOUT: 180000,
     UPLOAD_TIMEOUT: 180000,
@@ -68,14 +47,20 @@ const CONFIG = {
     SONGS_PER_PAGE: 8,
     RATE_LIMIT_MS: 3000,
     UNLOCK_RATE_MS: 10000,
-    
-    // Auto
-    AUTO_SEARCH_INTERVAL: 60000,
-    AUTO_SEARCH_TARGET: 'เพลงไทย',
-    AUTO_UPDATE_INTERVAL: 15000, // อัปเดตทุก 15 วินาที
-    AUTO_DELETE_MESSAGES: true, // ลบข้อความเก่าก่อนสร้างใหม่
-    
-    // Colors
+    AUTO_SEARCH_INTERVAL: 90000,
+    AUTO_UPDATE_INTERVAL: 15000,
+    AUTO_CLEANUP_INTERVAL: 600000, // ★ Cleanup ทุก 10 นาที
+    SEARCH_DELETE_TIMEOUT: 15000, // ★ ลบข้อความค้นหาใน 15 วิ
+    MAX_DOWNLOAD_RETRIES: 3,
+    MAX_SONGS_TO_TRY: 30,
+    SEARCH_QUERIES: [
+        'เพลงไทย', 'เพลงใหม่', 'เพลงฮิต', 'ลูกทุ่ง', 'หมอลำ',
+        'เพลงรัก', 'เพลงเศร้า', 'เพลงสากล', 'Thai pop', 'Thai rock',
+        'เพลงไทย 2024', 'เพลงไทย 2025', 'เพลงไวรัล', 'เพลง TikTok',
+        'Bodyslam', 'Saran', 'Three Man Down', 'Tattoo Colour',
+        'Potato', 'Cocktail', 'Slot Machine', 'Room 39',
+        'The Toys', 'Ink Waruntorn', 'Violette Wautier', 'Phum Viphurit'
+    ],
     COLOR: {
         PRIMARY: 0x5865F2,
         SUCCESS: 0x57F287,
@@ -86,70 +71,32 @@ const CONFIG = {
         GOLD: 0xF1C40F,
         PINK: 0xEB459E,
         PURPLE: 0x9B59B6,
-        TEAL: 0x1ABC9C,
-        RED: 0xE74C3C
+        TEAL: 0x1ABC9C
     }
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
-// [SECTION 03] - ASSETS (GIF & IMAGES)
+// [SECTION 03] - ASSETS
 // ═══════════════════════════════════════════════════════════════════════════
 
 const ASSETS = {
-    // Loading
     LOADING: 'https://media.tenor.com/On7kvXhzml4AAAAj/loading-gif.gif',
-    LOADING2: 'https://media.tenor.com/6nH2y6gKz0gAAAAj/loading.gif',
-    
-    // Success
     SUCCESS: 'https://media.tenor.com/8B6m6cZvB5sAAAAC/success.gif',
-    CONGRATS: 'https://media.tenor.com/P0T2yQGGe9sAAAAC/thumbs-up.gif',
-    
-    // Music
     MUSIC: 'https://media.tenor.com/XfN7hy_IYWYAAAAC/music.gif',
-    MUSIC_NOTES: 'https://media.tenor.com/1Q9hN8kNZ8AAAAAC/music-notes.gif',
-    HEADPHONE: 'https://media.tenor.com/8gH7Vz4jJxEAAAAC/headphone.gif',
-    
-    // Karaoke
     KARAOKE: 'https://media.tenor.com/6wL6Zm3cJuIAAAAC/singing.gif',
-    MICROPHONE: 'https://media.tenor.com/YwzZ5L8wHxsAAAAC/microphone.gif',
-    SINGING: 'https://media.tenor.com/XPj6rGgLQ3YAAAAC/singing.gif',
-    
-    // Download
     DOWNLOAD: 'https://media.tenor.com/KGzZlT5Uu2QAAAAC/download.gif',
-    DOWNLOAD2: 'https://media.tenor.com/YpJ5K8qYw9sAAAAC/downloading.gif',
-    
-    // Upload
     UPLOAD: 'https://media.tenor.com/qKz5v9rUYWYAAAAC/upload.gif',
-    
-    // Dance
     DANCING: 'https://media.tenor.com/XQeY7_wKPYwAAAAC/dance.gif',
-    PARTY: 'https://media.tenor.com/8jLwH5kS5MsAAAAC/party.gif',
-    
-    // Roblox
-    ROBLOX: 'https://media.tenor.com/9Z6zB9kJhSgAAAAC/roblox.gif',
-    
-    // Alert
-    ALERT: 'https://media.tenor.com/tPz7y_4XrXcAAAAC/alert.gif',
-    WARNING: 'https://media.tenor.com/Og5bYvHEB2wAAAAC/warning.gif',
-    
-    // New
+    MUSIC_NOTES: 'https://media.tenor.com/1Q9hN8kNZ8AAAAAC/music-notes.gif',
+    SEARCH: 'https://media.tenor.com/Qg5RJ6wGdpEAAAAC/search.gif',
+    LIBRARY: 'https://media.tenor.com/qP3S7gXsV3sAAAAC/library.gif',
+    FIRE: 'https://media.tenor.com/2roX3uxz_68AAAAC/fire.gif',
+    CHART: 'https://media.tenor.com/YvR6qC4jW1sAAAAC/chart.gif',
     NEW: 'https://media.tenor.com/yJ5fSP7_hQMAAAAC/new.gif',
     BELL: 'https://media.tenor.com/8yWL3gYgBsAAAAAC/bell.gif',
-    
-    // Search
-    SEARCH: 'https://media.tenor.com/Qg5RJ6wGdpEAAAAC/search.gif',
-    MAGNIFY: 'https://media.tenor.com/VlHvh_H1A6AAAAAC/magnify.gif',
-    
-    // Library
-    LIBRARY: 'https://media.tenor.com/qP3S7gXsV3sAAAAC/library.gif',
-    BOOKS: 'https://media.tenor.com/4dN3lR6Sg4MAAAAC/books.gif',
-    
-    // Stats
-    CHART: 'https://media.tenor.com/YvR6qC4jW1sAAAAC/chart.gif',
-    
-    // Fire
-    FIRE: 'https://media.tenor.com/2roX3uxz_68AAAAC/fire.gif',
-    HOT: 'https://media.tenor.com/d7c6HwOW1ZsAAAAC/fire-fire-flame.gif'
+    WARNING: 'https://media.tenor.com/Og5bYvHEB2wAAAAC/warning.gif',
+    ROCKET: 'https://media.tenor.com/xGvJCRXtL5IAAAAC/rocket.gif',
+    BROOM: 'https://media.tenor.com/6zV3LTFQ8VUAAAAC/broom.gif'
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -157,30 +104,32 @@ const ASSETS = {
 // ═══════════════════════════════════════════════════════════════════════════
 
 let songs = {};
-let displayChannels = []; // ช่องแสดงเพลง (ทุกคนเห็น)
-let libraryChannelId = null; // ช่องคลังเพลง (ทุกคนเห็น)
-let notificationChannelId = null; // ช่องแจ้งเตือนเพลงใหม่
-let searchChannelId = null; // ช่องค้นหาเพลง
-
+let displayChannels = [];
+let libraryChannelId = null;
+let notificationChannelId = null;
+let searchChannelId = null;
 let isLocked = true;
 let autoTask = null;
-let refreshTask = null;
-let saveTask = null;
 let autoUpdateTask = null;
+let saveTask = null;
+let cleanupTask = null;
 let unlockAttempts = new Map();
 let commandCooldowns = new Map();
 
-// เก็บข้อความที่ส่งไปแล้ว เพื่อลบทีหลัง
 let postedMessages = {
-    display: {}, // { channelId: [messageIds] }
-    library: [], // [messageIds]
-    search: null, // messageId
+    display: {},
+    library: [],
+    search: null,
     autoProgress: null
 };
 
-// Hash ข้อความล่าสุด เพื่อเช็คว่ามีการเปลี่ยนแปลงไหม
 let lastLibraryHash = '';
-let lastDisplayHashes = {}; // { channelId: hash }
+let lastDisplayHashes = {};
+let searchQueryIndex = 0;
+
+// ★ นับจำนวนการบันทึกซ้ำ (เช็คก่อน save)
+let lastSaveHash = '';
+let saveCount = 0;
 
 let stats = {
     totalSearches: 0,
@@ -191,9 +140,14 @@ let stats = {
     totalSongsRemoved: 0,
     totalSearchesByUser: 0,
     totalUpdates: 0,
+    totalSkipped: 0,
+    totalCleaned: 0, // ★ เพลงที่ถูกเคลียร์
+    totalDuplicatesRemoved: 0, // ★ เพลงซ้ำที่ลบ
     startTime: Date.now(),
     lastAutoSearch: null,
-    autoSearchCount: 0
+    lastCleanup: null,
+    autoSearchCount: 0,
+    cleanupCount: 0
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -209,21 +163,18 @@ app.get('/', (req, res) => {
         bot: client.user ? client.user.tag : 'offline',
         locked: isLocked,
         songs: Object.keys(songs).length,
-        channels: {
-            display: displayChannels.length,
-            library: !!libraryChannelId,
-            notification: !!notificationChannelId,
-            search: !!searchChannelId
+        stats: {
+            added: stats.totalSongsAdded,
+            skipped: stats.totalSkipped,
+            failed: stats.totalFailures,
+            cleaned: stats.totalCleaned,
+            duplicatesRemoved: stats.totalDuplicatesRemoved
         },
         uptime: Math.floor((Date.now() - stats.startTime) / 1000)
     });
 });
 
 app.get('/health', (req, res) => res.status(200).json({ status: 'ok' }));
-
-app.get('/stats', (req, res) => {
-    res.json({ ...stats, songCount: Object.keys(songs).length });
-});
 
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log(`✅ Web server running on port ${PORT}`));
@@ -241,7 +192,7 @@ const client = new Client({
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// [SECTION 07] - PERSISTENT STORAGE
+// [SECTION 07] - STORAGE (Smart Save - ไม่บันทึกซ้ำ)
 // ═══════════════════════════════════════════════════════════════════════════
 
 const LOCAL_BACKUP = '/tmp/backup.json';
@@ -252,7 +203,6 @@ async function loadFromCloud() {
         return;
     }
     try {
-        console.log('☁️ Loading from JSONBin...');
         const res = await axios.get(
             `${CONFIG.JSONBIN_URL}/${CONFIG.JSONBIN_ID}/latest`,
             { headers: { 'X-Master-Key': CONFIG.JSONBIN_KEY }, timeout: 30000 }
@@ -265,15 +215,6 @@ async function loadFromCloud() {
         if (data.notificationChannelId) notificationChannelId = data.notificationChannelId;
         if (data.searchChannelId) searchChannelId = data.searchChannelId;
         if (data.isLocked !== undefined) isLocked = data.isLocked;
-        if (data.stats) {
-            stats.totalSearches = data.stats.totalSearches || 0;
-            stats.totalDownloads = data.stats.totalDownloads || 0;
-            stats.totalUploads = data.stats.totalUploads || 0;
-            stats.totalFailures = data.stats.totalFailures || 0;
-            stats.totalSongsAdded = data.stats.totalSongsAdded || 0;
-            stats.totalSongsRemoved = data.stats.totalSongsRemoved || 0;
-            stats.totalSearchesByUser = data.stats.totalSearchesByUser || 0;
-        }
         
         console.log(`✅ Loaded: ${Object.keys(songs).length} songs`);
         saveToLocal();
@@ -283,11 +224,29 @@ async function loadFromCloud() {
     }
 }
 
-async function saveToCloud() {
+// ★★★ Smart Save - เช็ค hash ก่อนบันทึก (ประหยัดพื้นที่) ★★★
+async function saveToCloud(force = false) {
     if (!CONFIG.JSONBIN_ID || !CONFIG.JSONBIN_KEY) {
         saveToLocal();
         return;
     }
+    
+    // ★ สร้าง hash เพื่อเช็คว่าข้อมูลเปลี่ยนไหม
+    const currentHash = simpleHash(JSON.stringify({
+        songsCount: Object.keys(songs).length,
+        songIds: Object.keys(songs).sort(),
+        channels: displayChannels,
+        library: libraryChannelId,
+        notification: notificationChannelId,
+        search: searchChannelId,
+        locked: isLocked
+    }));
+    
+    if (!force && currentHash === lastSaveHash) {
+        console.log('💾 Data unchanged - skip save (ประหยัดพื้นที่)');
+        return;
+    }
+    
     try {
         await axios.put(
             `${CONFIG.JSONBIN_URL}/${CONFIG.JSONBIN_ID}`,
@@ -298,15 +257,6 @@ async function saveToCloud() {
                 notificationChannelId,
                 searchChannelId,
                 isLocked,
-                stats: {
-                    totalSearches: stats.totalSearches,
-                    totalDownloads: stats.totalDownloads,
-                    totalUploads: stats.totalUploads,
-                    totalFailures: stats.totalFailures,
-                    totalSongsAdded: stats.totalSongsAdded,
-                    totalSongsRemoved: stats.totalSongsRemoved,
-                    totalSearchesByUser: stats.totalSearchesByUser
-                },
                 lastUpdate: new Date().toISOString()
             },
             {
@@ -317,27 +267,23 @@ async function saveToCloud() {
                 timeout: 30000
             }
         );
+        
+        lastSaveHash = currentHash;
+        saveCount++;
+        console.log(`☁️ Saved to cloud (ครั้งที่ ${saveCount})`);
         saveToLocal();
     } catch (e) {
-        console.error('❌ Cloud save error:', e.message);
+        console.error('❌ Save error:', e.message);
         saveToLocal();
     }
 }
 
 function saveToLocal() {
     try {
-        fs.writeFileSync(
-            LOCAL_BACKUP,
-            JSON.stringify({
-                songs,
-                displayChannels,
-                libraryChannelId,
-                notificationChannelId,
-                searchChannelId,
-                isLocked
-            }),
-            'utf8'
-        );
+        fs.writeFileSync(LOCAL_BACKUP, JSON.stringify({
+            songs, displayChannels, libraryChannelId,
+            notificationChannelId, searchChannelId, isLocked
+        }), 'utf8');
     } catch (e) {}
 }
 
@@ -351,7 +297,6 @@ function loadFromLocal() {
             if (data.notificationChannelId) notificationChannelId = data.notificationChannelId;
             if (data.searchChannelId) searchChannelId = data.searchChannelId;
             if (data.isLocked !== undefined) isLocked = data.isLocked;
-            console.log(`📂 Local: ${Object.keys(songs).length} songs`);
         }
     } catch (e) {}
 }
@@ -362,11 +307,127 @@ function startAutoSave() {
         if (Object.keys(songs).length > 0 || displayChannels.length > 0) {
             await saveToCloud();
         }
-    }, 30000);
+    }, 60000); // ทุก 1 นาที (จากเดิม 30 วิ)
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// [SECTION 08] - SECURITY
+// [SECTION 08] - CLEANUP SYSTEM (★ ใหม่)
+// ═══════════════════════════════════════════════════════════════════════════
+
+async function cleanupLibrary() {
+    try {
+        stats.cleanupCount++;
+        stats.lastCleanup = new Date().toISOString();
+        
+        const songList = Object.values(songs);
+        const beforeCount = songList.length;
+        
+        let removedDuplicates = 0;
+        let removedInvalid = 0;
+        const removedTitles = [];
+        
+        // ★ 1. หาเพลงซ้ำ (เทียบชื่อ + ศิลปิน)
+        const seenKey = new Map();
+        for (const song of songList) {
+            const key = `${song.title.toLowerCase().trim()}|${song.artist.toLowerCase().trim()}`;
+            if (seenKey.has(key)) {
+                // ซ้ำ → ลบเพลงที่เพิ่มทีหลัง
+                const existing = seenKey.get(key);
+                const currentTime = new Date(song.addedAt || 0).getTime();
+                const existingTime = new Date(existing.addedAt || 0).getTime();
+                
+                if (currentTime > existingTime) {
+                    // เพลงใหม่กว่า → ลบเพลงเก่า
+                    delete songs[existing.id];
+                    seenKey.set(key, song);
+                    removedTitles.push(`🗑️ ซ้ำ: ${song.title}`);
+                } else {
+                    // เพลงเก่ากว่า → ลบเพลงใหม่
+                    delete songs[song.id];
+                    removedTitles.push(`🗑️ ซ้ำ: ${song.title}`);
+                }
+                removedDuplicates++;
+            } else {
+                seenKey.set(key, song);
+            }
+        }
+        
+        // ★ 2. หาเพลงที่ข้อมูลไม่ครบ (ไม่มี ID, ไม่มีชื่อ, ฯลฯ)
+        for (const song of Object.values(songs)) {
+            let invalid = false;
+            const reasons = [];
+            
+            if (!song.id || song.id.length < 5) {
+                invalid = true;
+                reasons.push('ไม่มี ID');
+            }
+            if (!song.title || song.title.trim() === '' || song.title === 'Unknown') {
+                invalid = true;
+                reasons.push('ไม่มีชื่อ');
+            }
+            if (!song.artist || song.artist.trim() === '' || song.artist === 'Unknown') {
+                invalid = true;
+                reasons.push('ไม่มีศิลปิน');
+            }
+            if (song.title && song.title.length > 200) {
+                invalid = true;
+                reasons.push('ชื่อยาวเกิน');
+            }
+            
+            if (invalid) {
+                delete songs[song.id];
+                removedInvalid++;
+                removedTitles.push(`🗑️ ไม่ครบ: ${song.title || song.id}`);
+            }
+        }
+        
+        const afterCount = Object.keys(songs).length;
+        const removedTotal = beforeCount - afterCount;
+        stats.totalCleaned += removedInvalid;
+        stats.totalDuplicatesRemoved += removedDuplicates;
+        
+        // ★ บันทึกถ้ามีการเปลี่ยนแปลง
+        if (removedTotal > 0) {
+            await saveToCloud(true);
+            console.log(`🧹 Cleanup: ลบ ${removedTotal} เพลง (ซ้ำ: ${removedDuplicates}, ไม่ครบ: ${removedInvalid})`);
+            return {
+                removed: removedTotal,
+                duplicates: removedDuplicates,
+                invalid: removedInvalid,
+                before: beforeCount,
+                after: afterCount,
+                titles: removedTitles
+            };
+        }
+        
+        console.log(`🧹 Cleanup: ไม่มีเพลงที่ต้องลบ (${beforeCount} เพลง)`);
+        return {
+            removed: 0,
+            duplicates: 0,
+            invalid: 0,
+            before: beforeCount,
+            after: afterCount,
+            titles: []
+        };
+    } catch (e) {
+        console.error('❌ Cleanup error:', e.message);
+        return { removed: 0, error: e.message };
+    }
+}
+
+function startAutoCleanup() {
+    if (cleanupTask) clearInterval(cleanupTask);
+    cleanupTask = setInterval(async () => {
+        if (isLocked) return;
+        try {
+            await cleanupLibrary();
+        } catch (e) {}
+    }, CONFIG.AUTO_CLEANUP_INTERVAL);
+    console.log(`🧹 Auto-cleanup enabled (every ${CONFIG.AUTO_CLEANUP_INTERVAL/1000}s)`);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// [SECTION 09] - SECURITY
 // ═══════════════════════════════════════════════════════════════════════════
 
 function verifyKey(input) {
@@ -399,18 +460,18 @@ function checkAccess(interaction) {
     if (!isAdmin(interaction)) {
         return { allowed: false, reason: '❌ คำสั่งนี้ใช้ได้เฉพาะ Admin เท่านั้น!' };
     }
-    if (isLocked && !['unlock', 'status', 'help', 'ค้นหาเพลง'].includes(interaction.commandName)) {
+    if (isLocked && !['unlock', 'status', 'help'].includes(interaction.commandName)) {
         return { allowed: false, reason: '🔒 บอทถูกล็อกอยู่! ใช้ `/unlock` เพื่อปลดล็อก' };
     }
     return { allowed: true };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// [SECTION 09] - CONTENT FILTER
+// [SECTION 10] - CONTENT FILTER
 // ═══════════════════════════════════════════════════════════════════════════
 
 const BANNED_WORDS = [
-    "กู", "มึง", "เหี้ย", "สัส", "ไอ้", "โง่", "ควาย", "ห่า", "แม่ง",
+    "กู", "มึง", "เหี้ย", "สัส", "ไอ้", "โง่", "ควาย",
     "xxx", "porn", "sex", "18+", "หนังโป๊", "ลามก",
     "การเมือง", "รัฐบาล", "ทหาร", "ประท้วง",
     "บูลลี่", "bully", "เหยียด", "ชาติพันธุ์",
@@ -423,7 +484,7 @@ function isBanned(title, artist) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// [SECTION 10] - UTILITIES
+// [SECTION 11] - UTILITIES
 // ═══════════════════════════════════════════════════════════════════════════
 
 function fmtDuration(secs) {
@@ -433,9 +494,7 @@ function fmtDuration(secs) {
     return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-function sleep(ms) {
-    return new Promise(r => setTimeout(r, ms));
-}
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 function fmtUptime(ms) {
     const s = Math.floor(ms / 1000);
@@ -472,8 +531,23 @@ function simpleHash(str) {
     return crypto.createHash('md5').update(str).digest('hex');
 }
 
+function shuffleArray(arr) {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+}
+
+function getNextSearchQuery() {
+    const query = CONFIG.SEARCH_QUERIES[searchQueryIndex];
+    searchQueryIndex = (searchQueryIndex + 1) % CONFIG.SEARCH_QUERIES.length;
+    return query;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
-// [SECTION 11] - MUSIC API
+// [SECTION 12] - MUSIC API
 // ═══════════════════════════════════════════════════════════════════════════
 
 async function searchJoox(query) {
@@ -488,6 +562,28 @@ async function searchJoox(query) {
         console.error(`Search error: ${e.message}`);
         return [];
     }
+}
+
+async function searchMultipleQueries(count = 3) {
+    const allSongs = [];
+    const seenIds = new Set();
+    
+    for (let i = 0; i < count; i++) {
+        const query = getNextSearchQuery();
+        console.log(`🔍 Query [${i+1}/${count}]: "${query}"`);
+        const results = await searchJoox(query);
+        
+        for (const song of results) {
+            if (!seenIds.has(song.id)) {
+                seenIds.add(song.id);
+                allSongs.push({ ...song, searchQuery: query });
+            }
+        }
+        
+        if (i < count - 1) await sleep(2000);
+    }
+    
+    return shuffleArray(allSongs);
 }
 
 async function getDirectUrl(songId, source = 'joox') {
@@ -515,12 +611,29 @@ async function downloadViaStream(songId, source = 'joox') {
     } catch { return null; }
 }
 
-async function downloadAudio(songId, title, artist) {
+async function switchSource(songId, songName, artist, source = 'joox') {
+    try {
+        const res = await axios.get(`${CONFIG.MUSIC_API_URL}/api/v1/music/switch`, {
+            params: { id: songId, source, name: songName, artist },
+            timeout: 90000
+        });
+        if (res.data?.url) return { type: 'url', url: res.data.url };
+        if (res.data?.data?.url) return { type: 'url', url: res.data.data.url };
+        if (res.data?.id) return { type: 'id', id: res.data.id, source: res.data.source };
+        return null;
+    } catch { return null; }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// [SECTION 13] - DOWNLOAD (ปรับปรุงให้สำเร็จมากขึ้น)
+// ═══════════════════════════════════════════════════════════════════════════
+
+async function downloadAudioOnce(songId, songName, artist, source = 'joox') {
     const tempPath = path.join('/tmp', `audio_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.mp3`);
     
-    // Layer 1
+    // Layer 1: Direct URL
     try {
-        const directUrl = await getDirectUrl(songId);
+        const directUrl = await getDirectUrl(songId, source);
         if (directUrl) {
             const res = await axios.get(directUrl, {
                 responseType: 'stream',
@@ -535,13 +648,13 @@ async function downloadAudio(songId, title, artist) {
                 stats.totalDownloads++;
                 return tempPath;
             }
-            fs.unlinkSync(tempPath);
+            try { fs.unlinkSync(tempPath); } catch (e) {}
         }
     } catch (e) {}
     
-    // Layer 2
+    // Layer 2: Stream
     try {
-        const stream = await downloadViaStream(songId);
+        const stream = await downloadViaStream(songId, source);
         if (stream) {
             const writer = fs.createWriteStream(tempPath);
             stream.pipe(writer);
@@ -550,13 +663,64 @@ async function downloadAudio(songId, title, artist) {
                 stats.totalDownloads++;
                 return tempPath;
             }
-            fs.unlinkSync(tempPath);
+            try { fs.unlinkSync(tempPath); } catch (e) {}
         }
     } catch (e) {}
     
+    // Layer 3: Switch
+    try {
+        const sw = await switchSource(songId, songName, artist, source);
+        if (sw?.type === 'id') {
+            const stream = await downloadViaStream(sw.id, sw.source);
+            if (stream) {
+                const writer = fs.createWriteStream(tempPath);
+                stream.pipe(writer);
+                await new Promise((r, j) => { writer.on('finish', r); writer.on('error', j); });
+                if (fs.statSync(tempPath).size > 1024) {
+                    stats.totalDownloads++;
+                    return tempPath;
+                }
+                try { fs.unlinkSync(tempPath); } catch (e) {}
+            }
+        } else if (sw?.type === 'url') {
+            const res = await axios.get(sw.url, {
+                responseType: 'stream',
+                timeout: CONFIG.DOWNLOAD_TIMEOUT
+            });
+            const writer = fs.createWriteStream(tempPath);
+            res.data.pipe(writer);
+            await new Promise((r, j) => { writer.on('finish', r); writer.on('error', j); });
+            if (fs.statSync(tempPath).size > 1024) {
+                stats.totalDownloads++;
+                return tempPath;
+            }
+            try { fs.unlinkSync(tempPath); } catch (e) {}
+        }
+    } catch (e) {}
+    
+    return null;
+}
+
+async function downloadAudio(songId, songName, artist, source = 'joox') {
+    for (let attempt = 1; attempt <= CONFIG.MAX_DOWNLOAD_RETRIES; attempt++) {
+        console.log(`⬇️ [Attempt ${attempt}/${CONFIG.MAX_DOWNLOAD_RETRIES}] ${songName}`);
+        const result = await downloadAudioOnce(songId, songName, artist, source);
+        if (result) {
+            console.log(`✅ Downloaded on attempt ${attempt}`);
+            return result;
+        }
+        if (attempt < CONFIG.MAX_DOWNLOAD_RETRIES) {
+            console.log(`⏳ Retry in 2s...`);
+            await sleep(2000);
+        }
+    }
     stats.totalFailures++;
     return null;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// [SECTION 14] - ROBLOX UPLOAD
+// ═══════════════════════════════════════════════════════════════════════════
 
 async function uploadToRoblox(filePath, title, artist) {
     if (!CONFIG.ROBLOX_API_KEY || !CONFIG.ROBLOX_USER_ID) {
@@ -598,75 +762,177 @@ async function uploadToRoblox(filePath, title, artist) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// [SECTION 12] - DELETE OLD MESSAGES (ระบบลบข้อความเก่า)
+// [SECTION 15] - PROCESS SONG (ตรวจสอบซ้ำก่อนเพิ่ม)
 // ═══════════════════════════════════════════════════════════════════════════
 
-async function deleteOldMessages(channel, messageIds) {
-    if (!channel || !messageIds || messageIds.length === 0) return;
-    for (const id of messageIds) {
-        try {
-            const msg = await channel.messages.fetch(id);
-            if (msg) await msg.delete();
-        } catch (e) {
-            // message already deleted
+async function processSong(song, interaction = null, index = 0, total = 1) {
+    const songId = song.id;
+    const title = song.name || 'Unknown';
+    const artist = song.artist || 'Unknown';
+    
+    // ★ ตรวจสอบว่ามี ID อยู่แล้ว
+    if (songs[songId]) {
+        stats.totalSkipped++;
+        console.log(`⏭️ Skip (ID ซ้ำ): ${title}`);
+        return { status: 'skipped', reason: 'ID ซ้ำ' };
+    }
+    
+    // ★ ตรวจสอบชื่อ + ศิลปิน ซ้ำ (ป้องกันการเพิ่มซ้ำคนละ ID)
+    const dupeCheck = Object.values(songs).find(s => 
+        s.title.toLowerCase().trim() === title.toLowerCase().trim() &&
+        s.artist.toLowerCase().trim() === artist.toLowerCase().trim()
+    );
+    
+    if (dupeCheck) {
+        stats.totalSkipped++;
+        console.log(`⏭️ Skip (ชื่อ+ศิลปิน ซ้ำ): ${title}`);
+        return { status: 'skipped', reason: 'ชื่อ+ศิลปิน ซ้ำ' };
+    }
+    
+    // ★ ตรวจสอบว่า title/artist ไม่ว่าง
+    if (!title || title === 'Unknown' || !artist || artist === 'Unknown') {
+        stats.totalSkipped++;
+        console.log(`⏭️ Skip (ข้อมูลไม่ครบ): ${title}`);
+        return { status: 'skipped', reason: 'ข้อมูลไม่ครบ' };
+    }
+    
+    // ตรวจสอบเนื้อหา
+    if (isBanned(title, artist)) {
+        stats.totalSkipped++;
+        return { status: 'banned', reason: 'ถูกคัดกรอง' };
+    }
+    
+    try {
+        if (interaction) {
+            await interaction.editReply({
+                embeds: [new EmbedBuilder()
+                    .setTitle(`⬇️ กำลังดาวน์โหลดเพลงที่ ${index+1}/${total}`)
+                    .setDescription(
+                        `🎵 **${truncate(title, 60)}**\n` +
+                        `🎤 ${truncate(artist, 50)}\n\n` +
+                        `${progressBar(index, total)}\n\n` +
+                        `📊 **สถานะ:** ⬇️ ดาวน์โหลด MP3...`
+                    )
+                    .setColor(CONFIG.COLOR.WARNING)
+                    .setThumbnail(song.cover || null)
+                ]
+            }).catch(() => {});
         }
+        
+        const audioPath = await downloadAudio(songId, title, artist, 'joox');
+        if (!audioPath) {
+            console.log(`❌ Download failed: ${title}`);
+            return { status: 'failed', reason: 'ดาวน์โหลดไม่ได้' };
+        }
+        
+        if (interaction) {
+            await interaction.editReply({
+                embeds: [new EmbedBuilder()
+                    .setTitle(`⬆️ กำลังอัปโหลดเพลงที่ ${index+1}/${total}`)
+                    .setDescription(
+                        `🎵 **${truncate(title, 60)}**\n` +
+                        `🎤 ${truncate(artist, 50)}\n\n` +
+                        `${progressBar(index + 0.5, total)}\n\n` +
+                        `📊 **สถานะ:** ⬆️ อัปโหลดขึ้น Roblox...`
+                    )
+                    .setColor(CONFIG.COLOR.INFO)
+                    .setThumbnail(song.cover || null)
+                ]
+            }).catch(() => {});
+        }
+        
+        const uploadResult = await uploadToRoblox(audioPath, title, artist);
+        
+        // ★ เพิ่มเข้าคลังเฉพาะเมื่อ upload สำเร็จ
+        if (uploadResult.success) {
+            songs[songId] = {
+                id: songId,
+                title,
+                artist,
+                thumbnail: song.cover || null,
+                album: song.album || null,
+                duration: song.duration || 0,
+                robloxAssetId: uploadResult.assetId,
+                robloxError: null,
+                source: 'joox',
+                searchQuery: song.searchQuery || null,
+                addedAt: new Date().toISOString()
+            };
+            stats.totalSongsAdded++;
+            console.log(`✅ Added: ${title} (${uploadResult.assetId})`);
+        } else {
+            console.log(`❌ Upload failed, not adding: ${title}`);
+        }
+        
+        try { fs.unlinkSync(audioPath); } catch (e) {}
+        
+        if (uploadResult.success) {
+            await notifyNewSong(songs[songId]);
+            await updateAllChannels();
+            await saveToCloud();
+        }
+        
+        return { status: uploadResult.success ? 'success' : 'failed', song: songs[songId], uploadResult };
+    } catch (e) {
+        console.error(`Process error: ${e.message}`);
+        return { status: 'failed', reason: e.message };
     }
 }
 
-async function deleteAllPostedMessages() {
-    // ลบข้อความในช่องแสดง
-    for (const chId of Object.keys(postedMessages.display)) {
-        const channel = client.channels.cache.get(chId);
-        if (channel) {
-            await deleteOldMessages(channel, postedMessages.display[chId]);
-        }
-        postedMessages.display[chId] = [];
-    }
-    
-    // ลบข้อความในช่องคลัง
-    if (libraryChannelId) {
-        const channel = client.channels.cache.get(libraryChannelId);
-        if (channel) {
-            await deleteOldMessages(channel, postedMessages.library);
-        }
-        postedMessages.library = [];
-    }
-    
-    // ลบข้อความในช่องค้นหา
-    if (searchChannelId && postedMessages.search) {
-        const channel = client.channels.cache.get(searchChannelId);
-        if (channel) {
-            await deleteOldMessages(channel, [postedMessages.search]);
-        }
-        postedMessages.search = null;
-    }
+// ═══════════════════════════════════════════════════════════════════════════
+// [SECTION 16] - NOTIFY
+// ═══════════════════════════════════════════════════════════════════════════
+
+async function notifyNewSong(song) {
+    if (!notificationChannelId) return;
+    try {
+        const channel = client.channels.cache.get(notificationChannelId);
+        if (!channel) return;
+        
+        const embed = new EmbedBuilder()
+            .setTitle('🎉 เพลงใหม่มาแล้ว!')
+            .setDescription(
+                '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
+                `🎵 **${truncate(song.title, 80)}**\n` +
+                `🎤 ${truncate(song.artist, 60)}\n` +
+                `⏱️ ${fmtDuration(song.duration)}\n` +
+                '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n' +
+                `🟢 **นำเข้า Roblox แล้ว!**\n\`${song.robloxAssetId}\`\n\n` +
+                `📊 **รวมในคลัง:** ${Object.keys(songs).length} เพลง`
+            )
+            .setColor(CONFIG.COLOR.SUCCESS)
+            .setImage(ASSETS.NEW)
+            .setFooter({ text: `🔔 ${new Date().toLocaleTimeString('th-TH')}` })
+            .setTimestamp();
+        
+        if (song.thumbnail) embed.setThumbnail(song.thumbnail);
+        
+        await channel.send({ 
+            content: '@everyone 🎵 เพลงใหม่มาแล้ว!',
+            embeds: [embed] 
+        });
+    } catch (e) {}
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// [SECTION 13] - BUILD SONG LIST EMBED (สวยงาม)
+// [SECTION 17] - BUILD EMBEDS
 // ═══════════════════════════════════════════════════════════════════════════
 
-function buildSongListEmbed(channelName = 'รายการเพลง Karaoke', useGif = true) {
+function buildSongListEmbed(channelName = 'รายการเพลง Karaoke') {
     const songList = Object.values(songs);
     
     if (songList.length === 0) {
         return new EmbedBuilder()
             .setTitle('🎤 ' + channelName)
-            .setDescription(
-                '```\n📭 ยังไม่มีเพลงในคลัง\n```\n' +
-                '💡 **วิธีเพิ่มเพลง:**\n' +
-                '> 🔍 ใช้ `/หาเพลง` เพื่อเพิ่มเพลง\n' +
-                '> 🚀 ใช้ `/เริ่มหาเพลง` เพื่อระบบอัตโนมัติ'
-            )
+            .setDescription('```\n📭 ยังไม่มีเพลงในคลัง\n```\n💡 ใช้ `/หาเพลง` หรือ `/เริ่มหาเพลง`')
             .setColor(CONFIG.COLOR.BLACK)
-            .setImage(useGif ? ASSETS.MUSIC : null)
-            .setFooter({ text: `📊 0 เพลง · อัปเดต: ${new Date().toLocaleTimeString('th-TH')}` });
+            .setImage(ASSETS.MUSIC)
+            .setFooter({ text: `📊 0 เพลง · ${new Date().toLocaleTimeString('th-TH')}` });
     }
     
     const uploaded = songList.filter(s => s.robloxAssetId).length;
     const pending = songList.length - uploaded;
     
-    // เรียงตามเวลาที่เพิ่มล่าสุด
     const sortedSongs = [...songList].sort((a, b) => 
         new Date(b.addedAt || 0) - new Date(a.addedAt || 0)
     );
@@ -677,61 +943,43 @@ function buildSongListEmbed(channelName = 'รายการเพลง Karaok
         .setTitle('🎤 ' + channelName)
         .setColor(CONFIG.COLOR.BLACK);
     
-    // Statistics
     embed.addFields({
         name: '📊 สถิติ',
-        value: 
-            `> 🎵 **เพลงทั้งหมด:** \`${songList.length}\`\n` +
-            `> 🟢 **นำเข้า Roblox:** \`${uploaded}\`\n` +
-            `> 🔴 **รอนำเข้า:** \`${pending}\``,
+        value: `> 🎵 **ทั้งหมด:** \`${songList.length}\` · 🟢 **นำเข้า:** \`${uploaded}\` · 🔴 **รอ:** \`${pending}\``,
         inline: false
     });
     
-    // Song list
     let desc = '📀 **เพลงล่าสุด:**\n\n';
     chunk.forEach((s, i) => {
         const r = s.robloxAssetId ? '🟢' : '🔴';
         const dur = fmtDuration(s.duration);
         desc += `**${i+1}.** ${r} **${truncate(s.title, 50)}**\n`;
-        desc += `　　🎤 ${truncate(s.artist, 40)}\n`;
-        desc += `　　⏱️ ${dur} · 🆔 \`${s.id.slice(0, 10)}\`\n\n`;
+        desc += `　　🎤 ${truncate(s.artist, 40)} · ⏱️ ${dur}\n\n`;
     });
     
     if (songList.length > CONFIG.SONGS_PER_PAGE) {
-        desc += `\n*...และอีก **${songList.length - CONFIG.SONGS_PER_PAGE}** เพลง*\n`;
-        desc += `*ใช้ \`/คลังเพลง\` เพื่อดูทั้งหมด*`;
+        desc += `\n*...และอีก **${songList.length - CONFIG.SONGS_PER_PAGE}** เพลง*`;
     }
     
     embed.setDescription(desc);
     embed.setFooter({ 
-        text: `📊 ${songList.length} เพลง · 🟢 ${uploaded} · 🔴 ${pending} · อัปเดต: ${new Date().toLocaleTimeString('th-TH')}`
+        text: `📊 ${songList.length} เพลง · 🟢 ${uploaded} · 🔴 ${pending} · ${new Date().toLocaleTimeString('th-TH')}`
     });
     embed.setTimestamp();
     
     return embed;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// [SECTION 14] - BUILD LIBRARY EMBED (คลังเพลงแบบเต็ม)
-// ═══════════════════════════════════════════════════════════════════════════
-
 function buildLibraryEmbed(page = 0) {
     const songList = Object.values(songs);
     
     if (songList.length === 0) {
         return {
-            embed: new EmbedBuilder()
-                .setTitle('📚 คลังเพลงทั้งหมด')
-                .setDescription('*ยังไม่มีเพลงในคลัง*')
-                .setColor(CONFIG.COLOR.BLACK)
-                .setImage(ASSETS.LIBRARY),
-            pages: 1,
-            currentPage: 0,
-            total: 0
+            embed: new EmbedBuilder().setTitle('📚 คลังเพลง').setDescription('*ว่างเปล่า*').setColor(CONFIG.COLOR.BLACK).setImage(ASSETS.LIBRARY),
+            pages: 1, currentPage: 0, total: 0
         };
     }
     
-    // เรียงตามชื่อ
     songList.sort((a, b) => a.title.localeCompare(b.title));
     
     const totalPages = Math.max(1, Math.ceil(songList.length / CONFIG.SONGS_PER_PAGE));
@@ -767,43 +1015,32 @@ function buildLibraryEmbed(page = 0) {
     });
     
     embed.setDescription(desc);
-    
     return { embed, pages: totalPages, currentPage, total: songList.length };
 }
 
 function buildLibraryButtons(currentPage, totalPages) {
     return new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-            .setCustomId('lib_first')
-            .setLabel('⏮️')
-            .setStyle(ButtonStyle.Secondary)
-            .setDisabled(currentPage === 0),
-        new ButtonBuilder()
-            .setCustomId('lib_prev')
-            .setLabel('◀️ ก่อน')
-            .setStyle(ButtonStyle.Primary)
-            .setDisabled(currentPage === 0),
-        new ButtonBuilder()
-            .setCustomId('lib_page')
-            .setLabel(`หน้า ${currentPage + 1}/${totalPages}`)
-            .setStyle(ButtonStyle.Secondary)
-            .setDisabled(true),
-        new ButtonBuilder()
-            .setCustomId('lib_next')
-            .setLabel('ถัดไป ▶️')
-            .setStyle(ButtonStyle.Primary)
-            .setDisabled(currentPage >= totalPages - 1),
-        new ButtonBuilder()
-            .setCustomId('lib_last')
-            .setLabel('⏭️')
-            .setStyle(ButtonStyle.Secondary)
-            .setDisabled(currentPage >= totalPages - 1)
+        new ButtonBuilder().setCustomId('lib_first').setLabel('⏮️').setStyle(ButtonStyle.Secondary).setDisabled(currentPage === 0),
+        new ButtonBuilder().setCustomId('lib_prev').setLabel('◀️').setStyle(ButtonStyle.Primary).setDisabled(currentPage === 0),
+        new ButtonBuilder().setCustomId('lib_page').setLabel(`${currentPage + 1}/${totalPages}`).setStyle(ButtonStyle.Secondary).setDisabled(true),
+        new ButtonBuilder().setCustomId('lib_next').setLabel('▶️').setStyle(ButtonStyle.Primary).setDisabled(currentPage >= totalPages - 1),
+        new ButtonBuilder().setCustomId('lib_last').setLabel('⏭️').setStyle(ButtonStyle.Secondary).setDisabled(currentPage >= totalPages - 1)
     );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// [SECTION 15] - POST TO CHANNEL (ลบเก่า + สร้างใหม่)
+// [SECTION 18] - POST CHANNELS
 // ═══════════════════════════════════════════════════════════════════════════
+
+async function deleteOldMessages(channel, messageIds) {
+    if (!channel || !messageIds || messageIds.length === 0) return;
+    for (const id of messageIds) {
+        try {
+            const msg = await channel.messages.fetch(id);
+            if (msg) await msg.delete();
+        } catch (e) {}
+    }
+}
 
 async function postToDisplayChannels() {
     if (displayChannels.length === 0) return;
@@ -814,29 +1051,24 @@ async function postToDisplayChannels() {
         const chId = displayChannels[i];
         const channelName = `รายการเพลง Karaoke (ช่อง ${i+1})`;
         
-        // ถ้า hash ไม่เปลี่ยน ข้าม
         if (lastDisplayHashes[chId] === hash) continue;
         
         try {
             const channel = client.channels.cache.get(chId);
             if (!channel) continue;
             
-            // ลบข้อความเก่าในช่องนี้
-            if (postedMessages.display[chId] && postedMessages.display[chId].length > 0) {
+            if (postedMessages.display[chId]?.length > 0) {
                 await deleteOldMessages(channel, postedMessages.display[chId]);
             }
             postedMessages.display[chId] = [];
             
-            // สร้างข้อความใหม่
-            const embed = buildSongListEmbed(channelName, true);
+            const embed = buildSongListEmbed(channelName);
             const msg = await channel.send({ embeds: [embed] });
             postedMessages.display[chId] = [msg.id];
             
             lastDisplayHashes[chId] = hash;
             stats.totalUpdates++;
-        } catch (e) {
-            console.error(`Post to display ${chId} error:`, e.message);
-        }
+        } catch (e) {}
     }
 }
 
@@ -844,72 +1076,58 @@ async function postToLibraryChannel() {
     if (!libraryChannelId) return;
     
     const hash = simpleHash(JSON.stringify(Object.values(songs).map(s => ({ id: s.id, r: s.robloxAssetId }))));
-    
     if (lastLibraryHash === hash) return;
     
     try {
         const channel = client.channels.cache.get(libraryChannelId);
         if (!channel) return;
         
-        // ลบข้อความเก่าทั้งหมด
         if (postedMessages.library.length > 0) {
             await deleteOldMessages(channel, postedMessages.library);
         }
         postedMessages.library = [];
         
-        // สร้าง Embed ใหม่
         const { embed, pages, currentPage } = buildLibraryEmbed(0);
         const buttons = pages > 1 ? [buildLibraryButtons(currentPage, pages)] : [];
         
-        const msg = await channel.send({ 
-            embeds: [embed], 
-            components: buttons 
-        });
+        const msg = await channel.send({ embeds: [embed], components: buttons });
         postedMessages.library = [msg.id];
         
         lastLibraryHash = hash;
         stats.totalUpdates++;
-    } catch (e) {
-        console.error('Post to library error:', e.message);
-    }
+    } catch (e) {}
 }
 
 async function postToSearchChannel() {
     if (!searchChannelId) return;
-    
     try {
         const channel = client.channels.cache.get(searchChannelId);
         if (!channel) return;
         
-        // ลบข้อความเก่า
         if (postedMessages.search) {
             await deleteOldMessages(channel, [postedMessages.search]);
         }
         
-        // สร้าง Embed สำหรับช่องค้นหา
         const embed = new EmbedBuilder()
             .setTitle('🔍 ค้นหาเพลง')
             .setDescription(
                 '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
                 '**📝 วิธีค้นหาเพลง:**\n\n' +
-                '> พิมพ์ชื่อเพลงหรือชื่อศิลปินในช่องนี้ได้เลย!\n\n' +
+                '> พิมพ์ชื่อเพลงหรือชื่อศิลปินในช่องนี้\n' +
+                '> ผลลัพธ์จะแสดง **เฉพาะคุณเห็น** และลบใน **15 วินาที**\n\n' +
                 '**✨ ตัวอย่าง:**\n' +
-                '> `Saran` - ค้นหาเพลงของ Saran\n' +
-                '> `แค่เพื่อน` - ค้นหาเพลงที่มีคำนี้\n' +
-                '> `Bodyslam` - ค้นหาเพลงของ Bodyslam\n\n' +
+                '> `Saran` · `Bodyslam` · `แค่เพื่อน` · `Potato`\n\n' +
                 '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
                 `**📊 เพลงในคลัง:** ${Object.keys(songs).length} เพลง\n` +
-                `**🔄 อัปเดตล่าสุด:** ${new Date().toLocaleTimeString('th-TH')}`
+                `**🔄 อัปเดต:** ${new Date().toLocaleTimeString('th-TH')}`
             )
             .setColor(CONFIG.COLOR.PRIMARY)
             .setImage(ASSETS.SEARCH)
-            .setFooter({ text: '💡 พิมพ์ชื่อเพลงในช่องนี้เพื่อค้นหา' });
+            .setFooter({ text: '💡 ผลลัพธ์จะหายไปใน 15 วินาที' });
         
         const msg = await channel.send({ embeds: [embed] });
         postedMessages.search = msg.id;
-    } catch (e) {
-        console.error('Post to search error:', e.message);
-    }
+    } catch (e) {}
 }
 
 async function updateAllChannels() {
@@ -918,143 +1136,22 @@ async function updateAllChannels() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// [SECTION 16] - AUTO UPDATE SYSTEM (ระบบอัปเดตอัตโนมัติ)
+// [SECTION 19] - AUTO UPDATE
 // ═══════════════════════════════════════════════════════════════════════════
 
 function startAutoUpdate() {
     if (autoUpdateTask) clearInterval(autoUpdateTask);
     autoUpdateTask = setInterval(async () => {
         if (isLocked) return;
-        try {
-            await updateAllChannels();
-        } catch (e) {
-            console.error('Auto-update error:', e.message);
-        }
+        try { await updateAllChannels(); } catch (e) {}
     }, CONFIG.AUTO_UPDATE_INTERVAL);
-    console.log(`🔄 Auto-update enabled (every ${CONFIG.AUTO_UPDATE_INTERVAL / 1000}s)`);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// [SECTION 17] - NOTIFY NEW SONG
+// [SECTION 20] - AUTO SEARCH
 // ═══════════════════════════════════════════════════════════════════════════
 
-async function notifyNewSong(song) {
-    if (!notificationChannelId) return;
-    
-    try {
-        const channel = client.channels.cache.get(notificationChannelId);
-        if (!channel) return;
-        
-        const embed = new EmbedBuilder()
-            .setTitle('🎉 เพลงใหม่มาแล้ว!')
-            .setDescription(
-                '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
-                `🎵 **${truncate(song.title, 80)}**\n` +
-                `🎤 ${truncate(song.artist, 60)}\n` +
-                `⏱️ ${fmtDuration(song.duration)}\n` +
-                '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n' +
-                (song.robloxAssetId 
-                    ? `🟢 **นำเข้า Roblox แล้ว!**\n\`${song.robloxAssetId}\``
-                    : '🔴 รออัปโหลด Roblox') +
-                `\n\n📊 **รวมในคลัง:** ${Object.keys(songs).length} เพลง`
-            )
-            .setColor(CONFIG.COLOR.SUCCESS)
-            .setImage(ASSETS.NEW)
-            .setFooter({ text: `🔔 แจ้งเตือนอัตโนมัติ · ${new Date().toLocaleTimeString('th-TH')}` })
-            .setTimestamp();
-        
-        if (song.thumbnail) embed.setThumbnail(song.thumbnail);
-        
-        await channel.send({ 
-            content: '@everyone 🎵 เพลงใหม่มาแล้ว!',
-            embeds: [embed] 
-        });
-    } catch (e) {
-        console.error('Notify error:', e.message);
-    }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// [SECTION 18] - PROCESS SONG
-// ═══════════════════════════════════════════════════════════════════════════
-
-async function processSong(song, interaction = null, index = 0, total = 1) {
-    const songId = song.id;
-    const title = song.name || 'Unknown';
-    const artist = song.artist || 'Unknown';
-    
-    if (songs[songId]) return { status: 'skipped', reason: 'มีอยู่แล้ว' };
-    if (isBanned(title, artist)) return { status: 'banned', reason: 'ถูกคัดกรอง' };
-    
-    try {
-        if (interaction) {
-            await interaction.editReply({
-                embeds: [new EmbedBuilder()
-                    .setTitle(`⬇️ กำลังดาวน์โหลดเพลงที่ ${index+1}/${total}`)
-                    .setDescription(
-                        `🎵 **${truncate(title, 60)}**\n` +
-                        `🎤 ${truncate(artist, 50)}\n\n` +
-                        `${progressBar(index, total)}\n\n` +
-                        `📊 **สถานะ:** ⬇️ ดาวน์โหลด MP3...`
-                    )
-                    .setColor(CONFIG.COLOR.WARNING)
-                    .setImage(ASSETS.DOWNLOAD)
-                ]
-            }).catch(() => {});
-        }
-        
-        const audioPath = await downloadAudio(songId, title, artist);
-        if (!audioPath) return { status: 'failed', reason: 'ดาวน์โหลดไม่ได้' };
-        
-        if (interaction) {
-            await interaction.editReply({
-                embeds: [new EmbedBuilder()
-                    .setTitle(`⬆️ กำลังอัปโหลดเพลงที่ ${index+1}/${total}`)
-                    .setDescription(
-                        `🎵 **${truncate(title, 60)}**\n` +
-                        `🎤 ${truncate(artist, 50)}\n\n` +
-                        `${progressBar(index + 0.5, total)}\n\n` +
-                        `📊 **สถานะ:** ⬆️ อัปโหลดขึ้น Roblox...`
-                    )
-                    .setColor(CONFIG.COLOR.INFO)
-                    .setImage(ASSETS.UPLOAD)
-                ]
-            }).catch(() => {});
-        }
-        
-        const uploadResult = await uploadToRoblox(audioPath, title, artist);
-        
-        songs[songId] = {
-            id: songId,
-            title,
-            artist,
-            thumbnail: song.cover || null,
-            album: song.album || null,
-            duration: song.duration || 0,
-            robloxAssetId: uploadResult.success ? uploadResult.assetId : null,
-            robloxError: uploadResult.success ? null : uploadResult.error,
-            source: 'joox',
-            addedAt: new Date().toISOString()
-        };
-        stats.totalSongsAdded++;
-        
-        try { fs.unlinkSync(audioPath); } catch (e) {}
-        
-        // 🔔 แจ้งเตือน + 🔄 อัปเดต
-        await notifyNewSong(songs[songId]);
-        await updateAllChannels();
-        
-        return { status: 'success', song: songs[songId], uploadResult };
-    } catch (e) {
-        return { status: 'failed', reason: e.message };
-    }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// [SECTION 19] - AUTO SEARCH
-// ═══════════════════════════════════════════════════════════════════════════
-
-async function runAutoSearch(channel, target = CONFIG.AUTO_SEARCH_TARGET) {
+async function runAutoSearch(channel) {
     if (isLocked) return;
     
     try {
@@ -1064,14 +1161,13 @@ async function runAutoSearch(channel, target = CONFIG.AUTO_SEARCH_TARGET) {
         const startEmbed = new EmbedBuilder()
             .setTitle('🔍 ระบบอัตโนมัติกำลังหาเพลง...')
             .setDescription(
-                `🎯 **เป้าหมาย:** ${target}\n` +
-                `⏱️ **เริ่มเมื่อ:** ${new Date().toLocaleTimeString('th-TH')}\n\n` +
-                `${progressBar(0, 1)}\n\n` +
-                `📊 **สถานะ:** 🔍 กำลังค้นหา...`
+                `⏱️ **เริ่ม:** ${new Date().toLocaleTimeString('th-TH')}\n` +
+                `🔄 **รอบที่:** ${stats.autoSearchCount}\n` +
+                `📋 **กำลังค้นหา 3 คำ**\n\n` +
+                `${progressBar(0, 1)}`
             )
             .setColor(CONFIG.COLOR.WARNING)
-            .setImage(ASSETS.SEARCH)
-            .setFooter({ text: `🔄 รอบที่ ${stats.autoSearchCount}` });
+            .setImage(ASSETS.SEARCH);
         
         let progressMsg;
         if (postedMessages.autoProgress) {
@@ -1083,36 +1179,32 @@ async function runAutoSearch(channel, target = CONFIG.AUTO_SEARCH_TARGET) {
         progressMsg = await channel.send({ embeds: [startEmbed] });
         postedMessages.autoProgress = progressMsg.id;
         
-        const results = await searchJoox(target);
+        const results = await searchMultipleQueries(3);
+        console.log(`🔍 Found ${results.length} unique songs`);
+        
         if (results.length === 0) {
-            const embed = new EmbedBuilder()
-                .setTitle('⏭️ ไม่พบเพลง')
-                .setDescription(`ไม่พบเพลงจาก: **${target}**\n🔄 จะลองใหม่ใน 60 วินาที`)
-                .setColor(CONFIG.COLOR.WARNING);
-            await progressMsg.edit({ embeds: [embed] });
+            await progressMsg.edit({
+                embeds: [new EmbedBuilder().setTitle('⏭️ ไม่พบเพลง').setDescription('🔄 รอรอบถัดไป').setColor(CONFIG.COLOR.WARNING)]
+            });
             return;
         }
         
-        await progressMsg.edit({
-            embeds: [new EmbedBuilder()
-                .setTitle(`🔍 พบ ${results.length} เพลง`)
-                .setDescription(
-                    `🎯 **เป้าหมาย:** ${target}\n` +
-                    `📊 **สถานะ:** เริ่มดาวน์โหลด...\n\n` +
-                    `${progressBar(0, results.length)}`
-                )
-                .setColor(CONFIG.COLOR.INFO)
-            ]
-        });
+        const maxToTry = Math.min(results.length, CONFIG.MAX_SONGS_TO_TRY);
         
-        for (let i = 0; i < results.length; i++) {
-            const r = await processSong(results[i], progressMsg, i, results.length);
+        let skippedCount = 0;
+        let failedCount = 0;
+        
+        for (let i = 0; i < maxToTry; i++) {
+            const song = results[i];
+            
+            if (songs[song.id]) {
+                skippedCount++;
+                continue;
+            }
+            
+            const r = await processSong(song, progressMsg, i, maxToTry);
             
             if (r.status === 'success') {
-                const uploadInfo = r.uploadResult.success
-                    ? `🟢 \`${r.uploadResult.assetId}\``
-                    : `🔴 ${r.uploadResult.error?.slice(0, 50) || 'failed'}`;
-                
                 await progressMsg.edit({
                     embeds: [new EmbedBuilder()
                         .setTitle('✅ เพิ่มเพลงอัตโนมัติสำเร็จ!')
@@ -1121,10 +1213,11 @@ async function runAutoSearch(channel, target = CONFIG.AUTO_SEARCH_TARGET) {
                             `🎵 **${truncate(r.song.title, 60)}**\n` +
                             `🎤 ${truncate(r.song.artist, 50)}\n` +
                             '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n' +
-                            `${progressBar(i + 1, results.length)}\n\n` +
-                            `🟢 **Roblox:** ${uploadInfo}\n` +
-                            `📊 **รวมในคลัง:** ${Object.keys(songs).length} เพลง\n\n` +
-                            `🔄 จะหาใหม่ใน **60 วินาที**`
+                            `${progressBar(i + 1, maxToTry)}\n\n` +
+                            `🟢 **Roblox:** \`${r.uploadResult.assetId}\`\n` +
+                            `📊 **รวม:** ${Object.keys(songs).length} เพลง\n` +
+                            `⏭️ ข้าม: ${skippedCount} · ❌ ล้ม: ${failedCount}\n\n` +
+                            `🔄 รอบถัดไปใน ${CONFIG.AUTO_SEARCH_INTERVAL/1000} วิ`
                         )
                         .setColor(CONFIG.COLOR.SUCCESS)
                         .setImage(ASSETS.SUCCESS)
@@ -1132,6 +1225,10 @@ async function runAutoSearch(channel, target = CONFIG.AUTO_SEARCH_TARGET) {
                     ]
                 });
                 return;
+            } else if (r.status === 'skipped') {
+                skippedCount++;
+            } else if (r.status === 'failed') {
+                failedCount++;
             }
         }
         
@@ -1139,8 +1236,9 @@ async function runAutoSearch(channel, target = CONFIG.AUTO_SEARCH_TARGET) {
             embeds: [new EmbedBuilder()
                 .setTitle('⏭️ ไม่มีเพลงใหม่ในรอบนี้')
                 .setDescription(
-                    `ลอง **${results.length}** เพลง แต่ซ้ำ/ถูกข้ามทั้งหมด\n\n` +
-                    `🔄 จะหาใหม่ใน **60 วินาที**`
+                    `ลองทั้งหมด **${maxToTry}** เพลง\n\n` +
+                    `⏭️ ข้าม: \`${skippedCount}\` · ❌ ล้ม: \`${failedCount}\`\n\n` +
+                    `🔄 รอ ${CONFIG.AUTO_SEARCH_INTERVAL/1000} วิ`
                 )
                 .setColor(CONFIG.COLOR.WARNING)
             ]
@@ -1151,7 +1249,7 @@ async function runAutoSearch(channel, target = CONFIG.AUTO_SEARCH_TARGET) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// [SECTION 20] - PUBLIC SEARCH (ช่องค้นหา)
+// [SECTION 21] - EPHEMERAL SEARCH (★ ใหม่ - แสดงเฉพาะคนพิมพ์ + ลบ 15 วิ)
 // ═══════════════════════════════════════════════════════════════════════════
 
 async function handleSearchMessage(message, query) {
@@ -1162,56 +1260,52 @@ async function handleSearchMessage(message, query) {
     
     if (results.length === 0) {
         embed = new EmbedBuilder()
-            .setTitle(`🔍 ค้นหา: "${truncate(query, 50)}"`)
+            .setTitle(`🔍 "${truncate(query, 40)}"`)
             .setDescription(
-                '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
-                '❌ **ไม่พบเพลงที่ตรงกัน**\n' +
-                '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n' +
-                '💡 **ลองค้นหาด้วย:**\n' +
-                '> ชื่อเพลง (บางส่วนก็ได้)\n' +
-                '> ชื่อศิลปิน\n' +
-                '> คำที่อยู่ในชื่อเพลง'
+                '❌ **ไม่พบเพลงที่ตรงกัน**\n\n' +
+                '💡 ลองพิมพ์ชื่อเพลงหรือศิลปิน\n' +
+                '⏱️ ข้อความนี้จะหายไปใน 15 วินาที'
             )
             .setColor(CONFIG.COLOR.ERROR)
-            .setImage(ASSETS.WARNING)
             .setFooter({ text: `📊 คลังมี ${Object.keys(songs).length} เพลง · ${new Date().toLocaleTimeString('th-TH')}` });
     } else {
         const displayed = results.slice(0, 10);
         embed = new EmbedBuilder()
-            .setTitle(`🔍 ค้นหา: "${truncate(query, 50)}"`)
+            .setTitle(`🔍 "${truncate(query, 40)}"`)
             .setDescription(
-                `✅ พบ **${results.length}** เพลงที่ตรงกัน${results.length > 10 ? ' (แสดง 10 เพลงแรก)' : ''}\n` +
-                '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'
+                `✅ พบ **${results.length}** เพลง${results.length > 10 ? ' (แสดง 10)' : ''}\n` +
+                '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
             )
             .setColor(CONFIG.COLOR.SUCCESS)
-            .setFooter({ text: `🎵 ค้นหาจากคลัง ${Object.keys(songs).length} เพลง · ${new Date().toLocaleTimeString('th-TH')}` });
+            .setFooter({ text: `🎵 ${new Date().toLocaleTimeString('th-TH')} · ⏱️ หายใน 15 วิ` });
         
         let desc = embed.data.description;
         displayed.forEach((s, i) => {
             const r = s.robloxAssetId ? '🟢' : '🔴';
             const dur = fmtDuration(s.duration);
-            desc += `\n**${i+1}.** ${r} **${truncate(s.title, 55)}**\n`;
-            desc += `　🎤 ${truncate(s.artist, 45)}\n`;
-            desc += `　⏱️ ${dur} · 🆔 \`${s.id.slice(0, 10)}...\`\n`;
+            desc += `\n**${i+1}.** ${r} **${truncate(s.title, 50)}**\n`;
+            desc += `　🎤 ${truncate(s.artist, 40)} · ⏱️ ${dur}\n`;
         });
         
         embed.setDescription(desc);
-        
-        if (displayed[0].thumbnail) {
-            embed.setThumbnail(displayed[0].thumbnail);
-        }
+        if (displayed[0].thumbnail) embed.setThumbnail(displayed[0].thumbnail);
     }
     
-    const reply = await message.reply({ embeds: [embed] });
-    
-    // ลบ reply หลัง 60 วินาที
-    setTimeout(() => {
-        reply.delete().catch(() => {});
-    }, 60000);
+    // ★ ส่งแบบ reply (เฉพาะคนพิมพ์เห็น) แล้วลบใน 15 วินาที
+    try {
+        const reply = await message.reply({ embeds: [embed] });
+        
+        // ★ ลบ reply + ข้อความเดิมใน 15 วิ
+        setTimeout(async () => {
+            try { await reply.delete(); } catch (e) {}
+        }, CONFIG.SEARCH_DELETE_TIMEOUT);
+    } catch (e) {
+        console.error('Reply error:', e.message);
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// [SECTION 21] - BOT READY
+// [SECTION 22] - BOT READY
 // ═══════════════════════════════════════════════════════════════════════════
 
 client.once('ready', async () => {
@@ -1220,126 +1314,122 @@ client.once('ready', async () => {
     console.log(`🔒 สถานะ: ${isLocked ? 'LOCKED' : 'UNLOCKED'}`);
     console.log(`📂 เพลง: ${Object.keys(songs).length}`);
     console.log(`📺 ช่องแสดง: ${displayChannels.length}`);
-    console.log(`📚 คลัง: ${libraryChannelId || 'ไม่ได้ตั้ง'}`);
-    console.log(`🔔 แจ้งเตือน: ${notificationChannelId || 'ไม่ได้ตั้ง'}`);
-    console.log(`🔍 ค้นหา: ${searchChannelId || 'ไม่ได้ตั้ง'}`);
     console.log('═'.repeat(70) + '\n');
     
     await loadFromCloud();
     
+    // ★ รัน Cleanup ครั้งแรก
+    const cleanResult = await cleanupLibrary();
+    if (cleanResult.removed > 0) {
+        console.log(`🧹 Initial cleanup: ลบ ${cleanResult.removed} เพลง`);
+    }
+    
     startAutoSave();
     startAutoUpdate();
+    startAutoCleanup();
     
     const commands = [
-        // 🔒 Security
         new SlashCommandBuilder().setName('unlock').setDescription('🔓 ปลดล็อกบอท')
             .addStringOption(o => o.setName('key').setDescription('Key').setRequired(true))
             .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
         new SlashCommandBuilder().setName('lock').setDescription('🔒 ล็อกบอท')
             .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-        new SlashCommandBuilder().setName('panel').setDescription('🎛️ เปิดแผงควบคุม')
+        new SlashCommandBuilder().setName('panel').setDescription('🎛️ แผงควบคุม')
             .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-        new SlashCommandBuilder().setName('status').setDescription('📊 สถานะบอท')
+        new SlashCommandBuilder().setName('status').setDescription('📊 สถานะ')
             .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
         new SlashCommandBuilder().setName('help').setDescription('📖 คำสั่งทั้งหมด')
             .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
         
-        // ⚙️ Setup
-        new SlashCommandBuilder().setName('ตั้งค่าช่องแสดง').setDescription('📺 ตั้งค่าช่องแสดงเพลง (สูงสุด 3 ช่อง)')
+        new SlashCommandBuilder().setName('ตั้งค่าช่องแสดง').setDescription('📺 ตั้งค่าช่องแสดงเพลง')
             .addChannelOption(o => o.setName('ช่อง1').setDescription('ช่องที่ 1').setRequired(true))
             .addChannelOption(o => o.setName('ช่อง2').setDescription('ช่องที่ 2').setRequired(false))
             .addChannelOption(o => o.setName('ช่อง3').setDescription('ช่องที่ 3').setRequired(false))
             .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-        new SlashCommandBuilder().setName('ตั้งค่าคลังเพลง').setDescription('📚 ตั้งค่าช่องคลังเพลง (ทุกคนเห็น)')
-            .addChannelOption(o => o.setName('ช่อง').setDescription('ช่องคลังเพลง').setRequired(true))
+        new SlashCommandBuilder().setName('ตั้งค่าคลังเพลง').setDescription('📚 ตั้งค่าช่องคลังเพลง')
+            .addChannelOption(o => o.setName('ช่อง').setDescription('ช่อง').setRequired(true))
             .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-        new SlashCommandBuilder().setName('ตั้งค่าช่องแจ้งเตือน').setDescription('🔔 ตั้งค่าช่องแจ้งเตือนเพลงใหม่')
-            .addChannelOption(o => o.setName('ช่อง').setDescription('ช่องแจ้งเตือน').setRequired(true))
+        new SlashCommandBuilder().setName('ตั้งค่าช่องแจ้งเตือน').setDescription('🔔 ช่องแจ้งเตือน')
+            .addChannelOption(o => o.setName('ช่อง').setDescription('ช่อง').setRequired(true))
             .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-        new SlashCommandBuilder().setName('ตั้งค่าช่องค้นหา').setDescription('🔍 ตั้งค่าช่องค้นหา (พิมพ์หาที่นี่)')
-            .addChannelOption(o => o.setName('ช่อง').setDescription('ช่องค้นหา').setRequired(true))
+        new SlashCommandBuilder().setName('ตั้งค่าช่องค้นหา').setDescription('🔍 ช่องค้นหา')
+            .addChannelOption(o => o.setName('ช่อง').setDescription('ช่อง').setRequired(true))
             .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
         new SlashCommandBuilder().setName('ทดสอบ').setDescription('🧪 ทดสอบ API')
             .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
         
-        // 🔍 Search
-        new SlashCommandBuilder().setName('หาเพลง').setDescription('🔍 ค้นหาและเพิ่มเพลง')
-            .addStringOption(o => o.setName('ชื่อเพลง').setDescription('ชื่อเพลง/ศิลปิน').setRequired(true))
+        new SlashCommandBuilder().setName('หาเพลง').setDescription('🔍 ค้นหาเพลง')
+            .addStringOption(o => o.setName('ชื่อเพลง').setDescription('ชื่อเพลง').setRequired(true))
             .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
         new SlashCommandBuilder().setName('ศิลปิน').setDescription('🎤 ดึงเพลงศิลปิน')
             .addStringOption(o => o.setName('ชื่อศิลปิน').setDescription('ชื่อศิลปิน').setRequired(true))
             .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-        new SlashCommandBuilder().setName('เพลงฮิต').setDescription('🔥 เพลงยอดนิยม')
+        new SlashCommandBuilder().setName('เพลงฮิต').setDescription('🔥 เพลงฮิต')
             .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
         
-        // 🚀 Auto
         new SlashCommandBuilder().setName('เริ่มหาเพลง').setDescription('🚀 เริ่มระบบอัตโนมัติ')
-            .addStringOption(o => o.setName('เป้าหมาย').setDescription('คำค้นหา').setRequired(false))
             .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-        new SlashCommandBuilder().setName('หยุดหาเพลง').setDescription('⏹️ หยุดระบบอัตโนมัติ')
+        new SlashCommandBuilder().setName('หยุดหาเพลง').setDescription('⏹️ หยุดระบบ')
             .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
         
-        // 📚 Library
         new SlashCommandBuilder().setName('คลังเพลง').setDescription('📚 ดูคลังเพลง (ทุกคน)'),
-        new SlashCommandBuilder().setName('ค้นหา').setDescription('🔎 ค้นหาในคลัง')
-            .addStringOption(o => o.setName('คำค้น').setDescription('คำค้นหา').setRequired(true)),
+        new SlashCommandBuilder().setName('ค้นหา').setDescription('🔎 ค้นหาในคลัง (ทุกคน)')
+            .addStringOption(o => o.setName('คำค้น').setDescription('คำค้น').setRequired(true)),
+        new SlashCommandBuilder().setName('สุ่มเพลง').setDescription('🎲 สุ่มเพลง (ทุกคน)'),
         new SlashCommandBuilder().setName('ข้อมูลเพลง').setDescription('ℹ️ ข้อมูลเพลง')
-            .addStringOption(o => o.setName('id').setDescription('ID เพลง').setRequired(true))
+            .addStringOption(o => o.setName('id').setDescription('ID').setRequired(true))
             .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
         new SlashCommandBuilder().setName('ลบเพลง').setDescription('🗑️ ลบเพลง')
-            .addStringOption(o => o.setName('id').setDescription('ID เพลง').setRequired(true))
+            .addStringOption(o => o.setName('id').setDescription('ID').setRequired(true))
             .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-        new SlashCommandBuilder().setName('สุ่มเพลง').setDescription('🎲 สุ่มเพลง (ทุกคน)'),
         
-        // 📤 Upload
         new SlashCommandBuilder().setName('อัปโหลด').setDescription('📤 เลือกเพลงอัปโหลด')
             .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-        new SlashCommandBuilder().setName('อัปโหลดทั้งหมด').setDescription('📤 อัปโหลดทุกเพลง')
+        new SlashCommandBuilder().setName('อัปโหลดทั้งหมด').setDescription('📤 อัปโหลดทั้งหมด')
             .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
         
-        // 📊 Stats
         new SlashCommandBuilder().setName('สถิติ').setDescription('📈 สถิติ')
             .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-        new SlashCommandBuilder().setName('สำรองข้อมูล').setDescription('💾 สำรองข้อมูล')
+        new SlashCommandBuilder().setName('สำรองข้อมูล').setDescription('💾 สำรอง')
             .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-        new SlashCommandBuilder().setName('อัปเดตช่อง').setDescription('🔄 บังคับอัปเดตทุกช่อง')
+        new SlashCommandBuilder().setName('อัปเดตช่อง').setDescription('🔄 อัปเดตช่อง')
+            .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+        
+        // ★ คำสั่งใหม่: เคลียร์คลัง
+        new SlashCommandBuilder().setName('เคลียร์คลัง').setDescription('🧹 เคลียร์เพลงซ้ำ + เพลงไม่ครบ')
             .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     ];
     
     try {
         await client.application.commands.set(commands);
         console.log('✅ Commands registered!');
-    } catch (e) {
-        console.error('Register error:', e.message);
-    }
+    } catch (e) { console.error(e.message); }
     
     await updateAllChannels();
     await postToSearchChannel();
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// [SECTION 22] - MESSAGE LISTENER (ช่องค้นหา)
+// [SECTION 23] - MESSAGE LISTENER (ช่องค้นหา)
 // ═══════════════════════════════════════════════════════════════════════════
 
 client.on('messageCreate', async message => {
     if (message.author.bot) return;
-    if (!searchChannelId) return;
-    if (message.channelId !== searchChannelId) return;
+    if (!searchChannelId || message.channelId !== searchChannelId) return;
     
     const query = message.content.trim();
-    if (!query || query.length < 1) return;
+    if (!query) return;
     
-    // ลบข้อความของผู้ใช้เพื่อไม่ให้รกช่อง
+    // ★ ลบข้อความผู้ใช้ทันที
     try { await message.delete(); } catch {}
     
-    // Rate limit
     if (!checkCooldown(message.author.id, 'search_msg')) return;
     
     await handleSearchMessage(message, query);
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// [SECTION 23] - INTERACTION HANDLER
+// [SECTION 24] - INTERACTION HANDLER
 // ═══════════════════════════════════════════════════════════════════════════
 
 client.on('interactionCreate', async interaction => {
@@ -1351,17 +1441,13 @@ client.on('interactionCreate', async interaction => {
     const { commandName, options } = interaction;
     const replyEmbed = new EmbedBuilder().setColor(CONFIG.COLOR.BLACK);
     
-    // 🌟 PUBLIC: /คลังเพลง
+    // PUBLIC commands
     if (commandName === 'คลังเพลง') {
         const { embed, pages, currentPage } = buildLibraryEmbed(0);
-        if (pages <= 1) {
-            return interaction.reply({ embeds: [embed] });
-        }
-        const buttons = buildLibraryButtons(currentPage, pages);
-        return interaction.reply({ embeds: [embed], components: [buttons] });
+        if (pages <= 1) return interaction.reply({ embeds: [embed] });
+        return interaction.reply({ embeds: [embed], components: [buildLibraryButtons(currentPage, pages)] });
     }
     
-    // 🌟 PUBLIC: /ค้นหา
     if (commandName === 'ค้นหา') {
         const filter = options.getString('คำค้น');
         const results = searchSongs(filter);
@@ -1369,23 +1455,15 @@ client.on('interactionCreate', async interaction => {
         
         if (results.length === 0) {
             return interaction.reply({
-                embeds: [new EmbedBuilder()
-                    .setTitle(`🔍 ค้นหา: "${filter}"`)
-                    .setDescription(`❌ ไม่พบเพลงที่ตรงกับ **"${filter}"**\n\n💡 ลองค้นหาด้วยชื่อเพลงหรือศิลปิน`)
-                    .setColor(CONFIG.COLOR.ERROR)
-                    .setImage(ASSETS.WARNING)
-                ],
+                embeds: [new EmbedBuilder().setTitle(`🔍 "${filter}"`).setDescription(`❌ ไม่พบเพลง`).setColor(CONFIG.COLOR.ERROR).setImage(ASSETS.WARNING)],
                 ephemeral: true
             });
         }
         
         const displayed = results.slice(0, 10);
         const embed = new EmbedBuilder()
-            .setTitle(`🔍 ค้นหา: "${filter}"`)
-            .setDescription(
-                `✅ พบ **${results.length}** เพลง\n` +
-                '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
-            )
+            .setTitle(`🔍 "${filter}"`)
+            .setDescription(`✅ พบ **${results.length}** เพลง\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`)
             .setColor(CONFIG.COLOR.SUCCESS)
             .setFooter({ text: `🎵 จากคลัง ${Object.keys(songs).length} เพลง` });
         
@@ -1395,13 +1473,11 @@ client.on('interactionCreate', async interaction => {
             desc += `\n**${i+1}.** ${r} **${truncate(s.title, 55)}**\n　🎤 ${truncate(s.artist, 45)}\n`;
         });
         embed.setDescription(desc);
-        
         if (displayed[0].thumbnail) embed.setThumbnail(displayed[0].thumbnail);
         
-        return interaction.reply({ embeds: [embed] });
+        return interaction.reply({ embeds: [embed], ephemeral: true });
     }
     
-    // 🌟 PUBLIC: /สุ่มเพลง
     if (commandName === 'สุ่มเพลง') {
         const list = Object.values(songs);
         if (list.length === 0) return interaction.reply({ embeds: [replyEmbed.setDescription('📭 ว่างเปล่า!')] });
@@ -1410,12 +1486,7 @@ client.on('interactionCreate', async interaction => {
         return interaction.reply({
             embeds: [replyEmbed
                 .setTitle('🎲 สุ่มได้เพลงนี้!')
-                .setDescription(
-                    '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
-                    `🎵 **${truncate(s.title, 60)}**\n` +
-                    `🎤 ${truncate(s.artist, 50)}\n` +
-                    '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
-                )
+                .setDescription(`🎵 **${truncate(s.title, 60)}**\n🎤 ${truncate(s.artist, 50)}`)
                 .addFields(
                     { name: '⏱️ ความยาว', value: `\`${fmtDuration(s.duration)}\``, inline: true },
                     { name: '🟢 Roblox', value: s.robloxAssetId ? `\`${s.robloxAssetId}\`` : '🔴 รอ', inline: true }
@@ -1423,47 +1494,40 @@ client.on('interactionCreate', async interaction => {
                 .setThumbnail(s.thumbnail)
                 .setImage(ASSETS.MUSIC_NOTES)
                 .setColor(CONFIG.COLOR.PINK)
-            ]
+            ],
+            ephemeral: true
         });
     }
     
-    // 🔓 UNLOCK
+    // Admin commands
     if (commandName === 'unlock') {
         if (!isAdmin(interaction)) return interaction.reply({ embeds: [replyEmbed.setDescription('❌ Admin เท่านั้น!')], ephemeral: true });
         if (!checkUnlockRateLimit(interaction.user.id)) return interaction.reply({ embeds: [replyEmbed.setDescription('⏱️ รอ 10 วินาที!')], ephemeral: true });
         
         if (verifyKey(options.getString('key'))) {
             isLocked = false;
-            await saveToCloud();
+            await saveToCloud(true);
             return interaction.reply({
-                embeds: [new EmbedBuilder()
-                    .setTitle('🔓 ปลดล็อกสำเร็จ!')
-                    .setDescription('บอทพร้อมใช้งาน!\n\nใช้ `/panel` เพื่อเปิดแผงควบคุม')
-                    .setColor(CONFIG.COLOR.SUCCESS)
-                    .setImage(ASSETS.SUCCESS)
-                ],
+                embeds: [new EmbedBuilder().setTitle('🔓 ปลดล็อกสำเร็จ!').setDescription('ใช้ `/panel` เพื่อเปิดแผงควบคุม').setColor(CONFIG.COLOR.SUCCESS).setImage(ASSETS.SUCCESS)],
                 ephemeral: true
             });
         }
         return interaction.reply({ embeds: [new EmbedBuilder().setTitle('❌ Key ไม่ถูกต้อง!').setColor(CONFIG.COLOR.ERROR)], ephemeral: true });
     }
     
-    // 🔒 LOCK
     if (commandName === 'lock') {
         if (!isAdmin(interaction)) return interaction.reply({ embeds: [replyEmbed.setDescription('❌ Admin เท่านั้น!')], ephemeral: true });
         isLocked = true;
-        await saveToCloud();
+        await saveToCloud(true);
         return interaction.reply({ embeds: [replyEmbed.setDescription('🔒 ล็อกบอทแล้ว!').setColor(CONFIG.COLOR.WARNING)] });
     }
     
-    // 🎛️ PANEL
     if (commandName === 'panel') {
         if (!isAdmin(interaction)) return interaction.reply({ embeds: [replyEmbed.setDescription('❌ Admin เท่านั้น!')], ephemeral: true });
         const { embed, components } = buildAdminPanel();
         return interaction.reply({ embeds: [embed], components });
     }
     
-    // 📊 STATUS
     if (commandName === 'status') {
         if (!isAdmin(interaction)) return interaction.reply({ embeds: [replyEmbed.setDescription('❌ Admin เท่านั้น!')], ephemeral: true });
         
@@ -1480,11 +1544,12 @@ client.on('interactionCreate', async interaction => {
                     { name: '📂 เพลงทั้งหมด', value: `\`${songList.length}\``, inline: true },
                     { name: '🟢 นำเข้า Roblox', value: `\`${uploaded}\``, inline: true },
                     { name: '🔴 รอนำเข้า', value: `\`${songList.length - uploaded}\``, inline: true },
-                    { name: '📺 ช่องแสดง', value: `\`${displayChannels.length}\``, inline: true },
-                    { name: '📚 คลังเพลง', value: libraryChannelId ? `<#${libraryChannelId}>` : '`❌ ไม่ได้ตั้ง`', inline: true },
-                    { name: '🔔 แจ้งเตือน', value: notificationChannelId ? `<#${notificationChannelId}>` : '`❌ ไม่ได้ตั้ง`', inline: true },
-                    { name: '🔍 ช่องค้นหา', value: searchChannelId ? `<#${searchChannelId}>` : '`❌ ไม่ได้ตั้ง`', inline: true },
-                    { name: '🔄 อัปเดตล่าสุด', value: `\`${stats.totalUpdates}\` ครั้ง`, inline: true }
+                    { name: '🧹 เคลียร์ไปแล้ว', value: `\`${stats.totalCleaned}\``, inline: true },
+                    { name: '🗑️ เพลงซ้ำที่ลบ', value: `\`${stats.totalDuplicatesRemoved}\``, inline: true },
+                    { name: '⏭️ ข้าม', value: `\`${stats.totalSkipped}\``, inline: true },
+                    { name: '❌ ล้มเหลว', value: `\`${stats.totalFailures}\``, inline: true },
+                    { name: '➕ เพิ่มสำเร็จ', value: `\`${stats.totalSongsAdded}\``, inline: true },
+                    { name: '🔄 Cleanup รอบ', value: `\`${stats.cleanupCount}\``, inline: true }
                 )
                 .setColor(isLocked ? CONFIG.COLOR.ERROR : CONFIG.COLOR.SUCCESS)
                 .setThumbnail(ASSETS.CHART)
@@ -1493,30 +1558,29 @@ client.on('interactionCreate', async interaction => {
         });
     }
     
-    // 📖 HELP
     if (commandName === 'help') {
         return interaction.reply({
             embeds: [new EmbedBuilder()
                 .setTitle('📖 คำสั่งทั้งหมด')
                 .setColor(CONFIG.COLOR.PRIMARY)
-                .setDescription('**Karaoke Bot v7.0 - Auto-Update Edition**')
+                .setDescription('**Karaoke Bot v9.0 - Clean & Smart**')
                 .addFields(
-                    { name: '🌟 สำหรับทุกคน', value: '`/คลังเพลง` `/ค้นหา` `/สุ่มเพลง`', inline: false },
-                    { name: '🔒 ความปลอดภัย', value: '`/unlock` `/lock` `/status` `/panel` `/help`', inline: false },
+                    { name: '🌟 ทุกคนใช้ได้', value: '`/คลังเพลง` `/ค้นหา` `/สุ่มเพลง`', inline: false },
+                    { name: '🔒 Security', value: '`/unlock` `/lock` `/status` `/panel` `/help`', inline: false },
                     { name: '⚙️ ตั้งค่า', value: '`/ตั้งค่าช่องแสดง` `/ตั้งค่าคลังเพลง` `/ตั้งค่าช่องแจ้งเตือน` `/ตั้งค่าช่องค้นหา`', inline: false },
                     { name: '🔍 ค้นหาเพลง', value: '`/หาเพลง` `/ศิลปิน` `/เพลงฮิต`', inline: false },
                     { name: '🚀 อัตโนมัติ', value: '`/เริ่มหาเพลง` `/หยุดหาเพลง`', inline: false },
                     { name: '📤 อัปโหลด', value: '`/อัปโหลด` `/อัปโหลดทั้งหมด`', inline: false },
+                    { name: '🧹 เคลียร์', value: '`/เคลียร์คลัง`', inline: false },
                     { name: '📊 ข้อมูล', value: '`/สถิติ` `/สำรองข้อมูล` `/อัปเดตช่อง`', inline: false }
                 )
                 .setImage(ASSETS.MUSIC)
-                .setFooter({ text: '💡 บอทอัปเดตช่องอัตโนมัติทุก 15 วินาที' })
+                .setFooter({ text: '✨ Auto-cleanup ทุก 10 นาที · Smart Save · Ephemeral Search' })
             ],
             ephemeral: true
         });
     }
     
-    // 📺 ตั้งค่าช่องแสดง
     if (commandName === 'ตั้งค่าช่องแสดง') {
         if (!isAdmin(interaction)) return interaction.reply({ embeds: [replyEmbed.setDescription('❌ Admin เท่านั้น!')], ephemeral: true });
         
@@ -1530,108 +1594,98 @@ client.on('interactionCreate', async interaction => {
         
         postedMessages.display = {};
         lastDisplayHashes = {};
-        await saveToCloud();
+        await saveToCloud(true);
         
         await interaction.reply({
-            embeds: [new EmbedBuilder()
-                .setTitle('📺 ตั้งค่าช่องแสดงสำเร็จ!')
-                .setDescription(
-                    `**ช่องแสดงเพลง (${displayChannels.length} ช่อง):**\n` +
-                    displayChannels.map((id, i) => `> ${i+1}. <#${id}>`).join('\n') +
-                    `\n\n✅ ทุกช่องจะแสดงรายการเพลงอัตโนมัติ`
-                )
-                .setColor(CONFIG.COLOR.SUCCESS)
-                .setImage(ASSETS.SUCCESS)
-            ]
+            embeds: [new EmbedBuilder().setTitle('📺 ตั้งค่าช่องแสดงสำเร็จ!').setDescription(displayChannels.map((id, i) => `${i+1}. <#${id}>`).join('\n')).setColor(CONFIG.COLOR.SUCCESS)]
         });
-        
         await postToDisplayChannels();
     }
     
-    // 📚 ตั้งค่าคลังเพลง
     if (commandName === 'ตั้งค่าคลังเพลง') {
         if (!isAdmin(interaction)) return interaction.reply({ embeds: [replyEmbed.setDescription('❌ Admin เท่านั้น!')], ephemeral: true });
-        
         libraryChannelId = options.getChannel('ช่อง').id;
         postedMessages.library = [];
         lastLibraryHash = '';
-        await saveToCloud();
-        
-        await interaction.reply({
-            embeds: [new EmbedBuilder()
-                .setTitle('📚 ตั้งค่าคลังเพลงสำเร็จ!')
-                .setDescription(`ช่องคลัง: <#${libraryChannelId}>\n\n✅ ทุกคนเห็นได้ + อัปเดตอัตโนมัติ`)
-                .setColor(CONFIG.COLOR.SUCCESS)
-            ]
-        });
-        
+        await saveToCloud(true);
+        await interaction.reply({ embeds: [new EmbedBuilder().setTitle('📚 ตั้งค่าคลังสำเร็จ!').setDescription(`<#${libraryChannelId}>`).setColor(CONFIG.COLOR.SUCCESS)] });
         await postToLibraryChannel();
     }
     
-    // 🔔 ตั้งค่าช่องแจ้งเตือน
     if (commandName === 'ตั้งค่าช่องแจ้งเตือน') {
         if (!isAdmin(interaction)) return interaction.reply({ embeds: [replyEmbed.setDescription('❌ Admin เท่านั้น!')], ephemeral: true });
-        
         notificationChannelId = options.getChannel('ช่อง').id;
-        await saveToCloud();
-        
-        await interaction.reply({
-            embeds: [new EmbedBuilder()
-                .setTitle('🔔 ตั้งค่าช่องแจ้งเตือนสำเร็จ!')
-                .setDescription(`ช่องแจ้งเตือน: <#${notificationChannelId}>\n\n✅ เมื่อมีเพลงใหม่ จะแจ้งเตือนอัตโนมัติ`)
-                .setColor(CONFIG.COLOR.SUCCESS)
-                .setImage(ASSETS.BELL)
-            ]
-        });
+        await saveToCloud(true);
+        await interaction.reply({ embeds: [new EmbedBuilder().setTitle('🔔 ตั้งค่าแจ้งเตือนสำเร็จ!').setDescription(`<#${notificationChannelId}>`).setColor(CONFIG.COLOR.SUCCESS).setImage(ASSETS.BELL)] });
     }
     
-    // 🔍 ตั้งค่าช่องค้นหา
     if (commandName === 'ตั้งค่าช่องค้นหา') {
         if (!isAdmin(interaction)) return interaction.reply({ embeds: [replyEmbed.setDescription('❌ Admin เท่านั้น!')], ephemeral: true });
-        
         searchChannelId = options.getChannel('ช่อง').id;
         postedMessages.search = null;
-        await saveToCloud();
-        
-        await interaction.reply({
-            embeds: [new EmbedBuilder()
-                .setTitle('🔍 ตั้งค่าช่องค้นหาสำเร็จ!')
-                .setDescription(
-                    `ช่องค้นหา: <#${searchChannelId}>\n\n` +
-                    `✅ **วิธีใช้:**\n` +
-                    `> พิมพ์ชื่อเพลง/ศิลปินในช่องนี้\n` +
-                    `> บอทจะแสดงผลลัพธ์ทันที`
-                )
+        await saveToCloud(true);
+        await interaction.reply({ 
+            embeds: [new EmbedBuilder().setTitle('🔍 ตั้งค่าช่องค้นหาสำเร็จ!')
+                .setDescription(`<#${searchChannelId}>\n\n💡 พิมพ์ชื่อเพลงในช่องนี้ → ผลลัพธ์แสดงเฉพาะคุณ + ลบใน 15 วิ`)
                 .setColor(CONFIG.COLOR.SUCCESS)
                 .setImage(ASSETS.SEARCH)
-            ]
+            ] 
         });
-        
         await postToSearchChannel();
     }
     
-    // 🔄 อัปเดตช่อง
     if (commandName === 'อัปเดตช่อง') {
         if (!isAdmin(interaction)) return interaction.reply({ embeds: [replyEmbed.setDescription('❌ Admin เท่านั้น!')], ephemeral: true });
         await interaction.deferReply();
-        
         lastLibraryHash = '';
         lastDisplayHashes = {};
-        
         await updateAllChannels();
         await postToSearchChannel();
+        await interaction.editReply({ embeds: [replyEmbed.setTitle('🔄 อัปเดตทุกช่องสำเร็จ!').setColor(CONFIG.COLOR.SUCCESS)] });
+    }
+    
+    // ★ คำสั่งเคลียร์คลัง
+    if (commandName === 'เคลียร์คลัง') {
+        if (!isAdmin(interaction)) return interaction.reply({ embeds: [replyEmbed.setDescription('❌ Admin เท่านั้น!')], ephemeral: true });
+        await interaction.deferReply();
+        
+        const result = await cleanupLibrary();
+        
+        if (result.error) {
+            return interaction.editReply({ embeds: [replyEmbed.setDescription(`❌ ${result.error}`).setColor(CONFIG.COLOR.ERROR)] });
+        }
+        
+        let desc = `**🧹 ผลการเคลียร์คลัง:**\n\n`;
+        desc += `> 📊 **ก่อนเคลียร์:** \`${result.before}\` เพลง\n`;
+        desc += `> 📊 **หลังเคลียร์:** \`${result.after}\` เพลง\n`;
+        desc += `> 🗑️ **ลบทั้งหมด:** \`${result.removed}\` เพลง\n`;
+        desc += `> 🔄 **เพลงซ้ำ:** \`${result.duplicates}\`\n`;
+        desc += `> ❌ **ข้อมูลไม่ครบ:** \`${result.invalid}\`\n`;
+        
+        if (result.titles.length > 0 && result.titles.length <= 10) {
+            desc += `\n**รายการที่ลบ:**\n${result.titles.map(t => `> ${t}`).join('\n')}`;
+        } else if (result.titles.length > 10) {
+            desc += `\n**ตัวอย่างที่ลบ:**\n${result.titles.slice(0, 10).map(t => `> ${t}`).join('\n')}\n> ...และอีก ${result.titles.length - 10}`;
+        }
         
         await interaction.editReply({
             embeds: [replyEmbed
-                .setTitle('🔄 อัปเดตทุกช่องสำเร็จ!')
-                .setDescription('ลบข้อความเก่า + สร้างใหม่เรียบร้อย')
-                .setColor(CONFIG.COLOR.SUCCESS)
-                .setImage(ASSETS.SUCCESS)
+                .setTitle('🧹 เคลียร์คลังสำเร็จ!')
+                .setDescription(desc)
+                .setColor(result.removed > 0 ? CONFIG.COLOR.SUCCESS : CONFIG.COLOR.INFO)
+                .setImage(ASSETS.BROOM)
+                .setFooter({ text: `⏱️ ${new Date().toLocaleTimeString('th-TH')}` })
             ]
         });
+        
+        // อัปเดตช่องถ้ามีการเปลี่ยนแปลง
+        if (result.removed > 0) {
+            lastLibraryHash = '';
+            lastDisplayHashes = {};
+            await updateAllChannels();
+        }
     }
     
-    // 🧪 ทดสอบ
     if (commandName === 'ทดสอบ') {
         if (!isAdmin(interaction)) return interaction.reply({ embeds: [replyEmbed.setDescription('❌ Admin เท่านั้น!')], ephemeral: true });
         await interaction.deferReply();
@@ -1643,37 +1697,21 @@ client.on('interactionCreate', async interaction => {
             });
             const list = res.data?.data?.songs || [];
             await interaction.editReply({
-                embeds: [replyEmbed
-                    .setTitle('🧪 ทดสอบ API')
-                    .setDescription(
-                        `**URL:** \`${CONFIG.MUSIC_API_URL}\`\n` +
-                        `**สถานะ:** ✅ เชื่อมต่อได้\n` +
-                        `**เวลา:** ${((Date.now()-t)/1000).toFixed(1)}s\n` +
-                        `**พบเพลง:** ${list.length}`
-                    )
-                    .setColor(CONFIG.COLOR.SUCCESS)
-                ]
+                embeds: [replyEmbed.setTitle('🧪 ทดสอบ API').setDescription(`✅ สถานะ: เชื่อมต่อได้\n⏱️ เวลา: ${((Date.now()-t)/1000).toFixed(1)}s\n🎵 พบเพลง: ${list.length}`).setColor(CONFIG.COLOR.SUCCESS)]
             });
         } catch (e) {
             await interaction.editReply({ embeds: [replyEmbed.setDescription(`❌ ${e.message}`).setColor(CONFIG.COLOR.ERROR)] });
         }
     }
     
-    // 💾 สำรอง
     if (commandName === 'สำรองข้อมูล') {
         if (!isAdmin(interaction)) return interaction.reply({ embeds: [replyEmbed.setDescription('❌ Admin เท่านั้น!')], ephemeral: true });
         await interaction.deferReply();
-        await saveToCloud();
-        await interaction.editReply({
-            embeds: [replyEmbed
-                .setTitle('💾 สำรองข้อมูลสำเร็จ!')
-                .setDescription(`บันทึก ${Object.keys(songs).length} เพลงขึ้น Cloud`)
-                .setColor(CONFIG.COLOR.SUCCESS)
-            ]
-        });
+        await saveToCloud(true);
+        await interaction.editReply({ embeds: [replyEmbed.setTitle('💾 สำรองสำเร็จ!').setDescription(`${Object.keys(songs).length} เพลง`).setColor(CONFIG.COLOR.SUCCESS)] });
     }
     
-    // ตรวจสอบ Access
+    // Access check
     const access = checkAccess(interaction);
     if (!access.allowed) {
         return interaction.reply({ embeds: [replyEmbed.setDescription(access.reason).setColor(CONFIG.COLOR.ERROR)], ephemeral: true });
@@ -1683,33 +1721,28 @@ client.on('interactionCreate', async interaction => {
         return interaction.reply({ embeds: [replyEmbed.setDescription('⏱️ รออีกนิด!')], ephemeral: true });
     }
     
-    // 🔍 หาเพลง
     if (commandName === 'หาเพลง') {
         await interaction.deferReply();
         const query = options.getString('ชื่อเพลง');
         
-        await interaction.editReply({
-            embeds: [replyEmbed
-                .setTitle('🔍 กำลังค้นหา...')
-                .setDescription(`**${query}**`)
-                .setColor(CONFIG.COLOR.WARNING)
-                .setImage(ASSETS.SEARCH)
-            ]
-        });
+        await interaction.editReply({ embeds: [replyEmbed.setTitle('🔍 กำลังค้นหา...').setDescription(`**${query}**`).setColor(CONFIG.COLOR.WARNING).setImage(ASSETS.SEARCH)] });
         
         const results = await searchJoox(query);
-        if (results.length === 0) {
-            return interaction.editReply({ embeds: [replyEmbed.setDescription(`❌ ไม่พบเพลง **${query}**`).setColor(CONFIG.COLOR.ERROR)] });
-        }
+        if (results.length === 0) return interaction.editReply({ embeds: [replyEmbed.setDescription(`❌ ไม่พบเพลง`).setColor(CONFIG.COLOR.ERROR)] });
+        
+        const shuffled = shuffleArray(results);
+        const maxTry = Math.min(shuffled.length, 15);
         
         let result = null;
-        for (let i = 0; i < results.length; i++) {
-            result = await processSong(results[i], interaction, i, results.length);
+        let skipped = 0;
+        
+        for (let i = 0; i < maxTry; i++) {
+            result = await processSong(shuffled[i], interaction, i, maxTry);
             if (result.status === 'success') break;
+            if (result.status === 'skipped') skipped++;
         }
         
         if (result?.status === 'success') {
-            const rInfo = result.uploadResult.success ? `✅ \`${result.uploadResult.assetId}\`` : `❌ ${result.uploadResult.error?.slice(0, 100)}`;
             await interaction.editReply({
                 embeds: [replyEmbed
                     .setTitle('✅ เพิ่มเพลงสำเร็จ!')
@@ -1719,17 +1752,16 @@ client.on('interactionCreate', async interaction => {
                         { name: '🎵 เพลง', value: truncate(result.song.title, 60), inline: true },
                         { name: '🎤 ศิลปิน', value: truncate(result.song.artist, 50), inline: true },
                         { name: '⏱️ ความยาว', value: fmtDuration(result.song.duration), inline: true },
-                        { name: '🟢 Roblox', value: rInfo, inline: false }
+                        { name: '🟢 Roblox', value: `\`${result.uploadResult.assetId}\``, inline: false }
                     )
                     .setColor(CONFIG.COLOR.SUCCESS)
                 ]
             });
         } else {
-            await interaction.editReply({ embeds: [replyEmbed.setDescription(`❌ ${result?.reason || 'ไม่สำเร็จ'}`).setColor(CONFIG.COLOR.ERROR)] });
+            await interaction.editReply({ embeds: [replyEmbed.setDescription(`❌ ลอง ${maxTry} เพลง · ข้าม ${skipped} · ล้มเหลวทั้งหมด`).setColor(CONFIG.COLOR.ERROR)] });
         }
     }
     
-    // 🎤 ศิลปิน
     if (commandName === 'ศิลปิน') {
         await interaction.deferReply();
         const artist = options.getString('ชื่อศิลปิน');
@@ -1737,19 +1769,17 @@ client.on('interactionCreate', async interaction => {
         
         if (results.length === 0) return interaction.editReply({ embeds: [replyEmbed.setDescription(`❌ ไม่พบ **${artist}**`).setColor(CONFIG.COLOR.ERROR)] });
         
-        await interaction.editReply({
-            embeds: [new EmbedBuilder().setTitle(`⏳ โหลดเพลง ${artist}...`).setDescription(`พบ ${results.length} เพลง`).setColor(CONFIG.COLOR.WARNING)]
-        });
+        await interaction.editReply({ embeds: [new EmbedBuilder().setTitle(`⏳ โหลดเพลง ${artist}...`).setDescription(`พบ ${results.length} เพลง`).setColor(CONFIG.COLOR.WARNING)] });
         
         const added = [], skipped = [];
         for (let i = 0; i < results.length; i++) {
             const r = await processSong(results[i], interaction, i, results.length);
             if (r.status === 'success') added.push(r.song);
             else skipped.push(r.reason);
-            await sleep(3000);
+            await sleep(2000);
         }
         
-        const summary = added.length > 0 ? added.map(s => `> ${s.robloxAssetId ? '🟢' : '🔴'} **${truncate(s.title, 50)}**`).join('\n') : '> ไม่มีเพลงใหม่';
+        const summary = added.length > 0 ? added.map(s => `> 🟢 **${truncate(s.title, 50)}**`).join('\n') : '> ไม่มีเพลงใหม่';
         await interaction.editReply({
             embeds: [new EmbedBuilder()
                 .setTitle(`✅ ${artist}`)
@@ -1765,7 +1795,6 @@ client.on('interactionCreate', async interaction => {
         });
     }
     
-    // 🔥 เพลงฮิต
     if (commandName === 'เพลงฮิต') {
         await interaction.deferReply();
         const results = await searchJoox('เพลงไทย');
@@ -1773,12 +1802,15 @@ client.on('interactionCreate', async interaction => {
         
         await interaction.editReply({ embeds: [new EmbedBuilder().setTitle('⏳ ดึงเพลงฮิต...').setDescription(`พบ ${results.length} เพลง`).setColor(CONFIG.COLOR.WARNING)] });
         
+        const shuffled = shuffleArray(results);
+        const maxTry = Math.min(shuffled.length, 15);
         const added = [], skipped = [];
-        for (let i = 0; i < results.length; i++) {
-            const r = await processSong(results[i], interaction, i, results.length);
+        
+        for (let i = 0; i < maxTry; i++) {
+            const r = await processSong(shuffled[i], interaction, i, maxTry);
             if (r.status === 'success') added.push(r.song);
             else skipped.push(r.reason);
-            await sleep(3000);
+            await sleep(2000);
         }
         
         await interaction.editReply({
@@ -1795,60 +1827,50 @@ client.on('interactionCreate', async interaction => {
         });
     }
     
-    // 🚀 เริ่มหาเพลง
     if (commandName === 'เริ่มหาเพลง') {
         if (autoTask) return interaction.reply({ embeds: [replyEmbed.setDescription('⚠️ ทำงานอยู่แล้ว!')] });
         
-        const target = options.getString('เป้าหมาย') || CONFIG.AUTO_SEARCH_TARGET;
-        
         if (displayChannels.length === 0) {
-            return interaction.reply({ embeds: [replyEmbed.setDescription('⚠️ ยังไม่ได้ตั้งค่าช่องแสดง! ใช้ `/ตั้งค่าช่องแสดง` ก่อน').setColor(CONFIG.COLOR.WARNING)] });
+            return interaction.reply({ embeds: [replyEmbed.setDescription('⚠️ ตั้งค่าช่องแสดงก่อน!').setColor(CONFIG.COLOR.WARNING)] });
         }
         
         await interaction.reply({
             embeds: [replyEmbed
                 .setTitle('🚀 เริ่มระบบอัตโนมัติ!')
                 .setDescription(
-                    `🎯 **เป้าหมาย:** ${target}\n` +
-                    `⏱️ **รอบละ:** 60 วินาที\n` +
-                    `🔄 **อัปเดตช่อง:** ทุก 15 วินาที\n` +
-                    `🔔 **แจ้งเตือน:** ${notificationChannelId ? `<#${notificationChannelId}>` : 'ไม่ได้ตั้ง'}\n\n` +
+                    `⏱️ **รอบละ:** ${CONFIG.AUTO_SEARCH_INTERVAL/1000} วินาที\n` +
+                    `🔍 **ค้นหา:** 3 คำต่อรอบ\n` +
+                    `🔄 **ลองสูงสุด:** ${CONFIG.MAX_SONGS_TO_TRY} เพลง\n` +
+                    `♻️ **Retry:** ${CONFIG.MAX_DOWNLOAD_RETRIES} ครั้ง\n` +
+                    `🧹 **Auto-cleanup:** ทุก 10 นาที\n\n` +
                     `💾 เพลงจะถูกบันทึกอัตโนมัติ`
                 )
                 .setColor(CONFIG.COLOR.SUCCESS)
-                .setImage(ASSETS.LOADING)
+                .setImage(ASSETS.ROCKET)
             ]
         });
         
         const channel = client.channels.cache.get(displayChannels[0]);
         if (channel) {
-            await runAutoSearch(channel, target);
+            await runAutoSearch(channel);
             autoTask = setInterval(async () => {
                 const ch = client.channels.cache.get(displayChannels[0]);
-                if (ch) await runAutoSearch(ch, target);
+                if (ch) await runAutoSearch(ch);
             }, CONFIG.AUTO_SEARCH_INTERVAL);
         }
     }
     
-    // ⏹️ หยุดหาเพลง
     if (commandName === 'หยุดหาเพลง') {
         if (autoTask) {
             clearInterval(autoTask);
             autoTask = null;
-            await saveToCloud();
-            await interaction.reply({
-                embeds: [replyEmbed
-                    .setTitle('⏹️ หยุดระบบอัตโนมัติ')
-                    .setDescription(`💾 บันทึกแล้ว\n📊 รอบที่ทำ: ${stats.autoSearchCount}`)
-                    .setColor(CONFIG.COLOR.SUCCESS)
-                ]
-            });
+            await saveToCloud(true);
+            await interaction.reply({ embeds: [replyEmbed.setTitle('⏹️ หยุดระบบอัตโนมัติ').setDescription(`💾 บันทึกแล้ว\n📊 รอบ: ${stats.autoSearchCount}\n➕ เพิ่ม: ${stats.totalSongsAdded}\n⏭️ ข้าม: ${stats.totalSkipped}`).setColor(CONFIG.COLOR.SUCCESS)] });
         } else {
             await interaction.reply({ embeds: [replyEmbed.setDescription('⚠️ ไม่ได้ทำงาน!')] });
         }
     }
     
-    // ℹ️ ข้อมูลเพลง
     if (commandName === 'ข้อมูลเพลง') {
         const id = options.getString('id');
         const song = songs[id];
@@ -1863,23 +1885,22 @@ client.on('interactionCreate', async interaction => {
                 { name: '⏱️ ความยาว', value: fmtDuration(song.duration), inline: true },
                 { name: '💿 อัลบั้ม', value: song.album || 'ไม่ระบุ', inline: true },
                 { name: '🆔 ID', value: `\`${song.id}\``, inline: false },
-                { name: '🟢 Roblox', value: song.robloxAssetId ? `\`${song.robloxAssetId}\`` : '🔴 ยังไม่อัปโหลด', inline: true },
-                { name: '📅 เพิ่มเมื่อ', value: song.addedAt ? new Date(song.addedAt).toLocaleString('th-TH') : 'ไม่ระบุ', inline: true }
+                { name: '🟢 Roblox', value: song.robloxAssetId ? `\`${song.robloxAssetId}\`` : '🔴 รอ', inline: true },
+                { name: '🔍 คำค้นหา', value: song.searchQuery || 'ไม่ระบุ', inline: true },
+                { name: '📅 เพิ่มเมื่อ', value: song.addedAt ? new Date(song.addedAt).toLocaleString('th-TH') : 'ไม่ระบุ', inline: false }
             );
         if (song.thumbnail) embed.setThumbnail(song.thumbnail);
-        if (song.robloxError) embed.addFields({ name: '⚠️ Error', value: song.robloxError.slice(0, 200), inline: false });
         
         await interaction.reply({ embeds: [embed] });
     }
     
-    // 🗑️ ลบเพลง
     if (commandName === 'ลบเพลง') {
         const id = options.getString('id');
         if (songs[id]) {
             const title = songs[id].title;
             delete songs[id];
             stats.totalSongsRemoved++;
-            await saveToCloud();
+            await saveToCloud(true);
             lastLibraryHash = '';
             lastDisplayHashes = {};
             await interaction.reply({ embeds: [replyEmbed.setTitle('✅ ลบเพลง').setDescription(`ลบ **${truncate(title, 60)}**`).setColor(CONFIG.COLOR.SUCCESS)] });
@@ -1889,7 +1910,6 @@ client.on('interactionCreate', async interaction => {
         }
     }
     
-    // 📤 อัปโหลด
     if (commandName === 'อัปโหลด') {
         const pending = Object.values(songs).filter(s => !s.robloxAssetId);
         if (pending.length === 0) return interaction.reply({ embeds: [replyEmbed.setDescription('✅ ทุกเพลงอัปโหลดแล้ว!')] });
@@ -1906,17 +1926,11 @@ client.on('interactionCreate', async interaction => {
             })));
         
         await interaction.reply({
-            embeds: [new EmbedBuilder()
-                .setTitle('📤 เลือกเพลงอัปโหลด')
-                .setDescription(`มี **${pending.length}** เพลงรออัปโหลด\nเลือกได้สูงสุด 10 เพลง`)
-                .setColor(CONFIG.COLOR.PRIMARY)
-                .setImage(ASSETS.UPLOAD)
-            ],
+            embeds: [new EmbedBuilder().setTitle('📤 เลือกเพลงอัปโหลด').setDescription(`มี **${pending.length}** เพลงรอ`).setColor(CONFIG.COLOR.PRIMARY).setImage(ASSETS.UPLOAD)],
             components: [new ActionRowBuilder().addComponents(select)]
         });
     }
     
-    // 📤 อัปโหลดทั้งหมด
     if (commandName === 'อัปโหลดทั้งหมด') {
         const pending = Object.values(songs).filter(s => !s.robloxAssetId);
         if (pending.length === 0) return interaction.reply({ embeds: [replyEmbed.setDescription('✅ ทุกเพลงอัปโหลดแล้ว!')] });
@@ -1928,20 +1942,11 @@ client.on('interactionCreate', async interaction => {
         );
         
         await interaction.editReply({
-            embeds: [new EmbedBuilder()
-                .setTitle('⚠️ ยืนยันการอัปโหลดทั้งหมด')
-                .setDescription(
-                    `จะอัปโหลด **${pending.length}** เพลง\n` +
-                    `⏱️ ใช้เวลาประมาณ **${Math.ceil(pending.length * 0.5)} นาที**`
-                )
-                .setColor(CONFIG.COLOR.WARNING)
-                .setImage(ASSETS.WARNING)
-            ],
+            embeds: [new EmbedBuilder().setTitle('⚠️ ยืนยัน').setDescription(`อัปโหลด **${pending.length}** เพลง\n⏱️ ประมาณ **${Math.ceil(pending.length * 0.5)} นาที**`).setColor(CONFIG.COLOR.WARNING).setImage(ASSETS.WARNING)],
             components: [row]
         });
     }
     
-    // 📈 สถิติ
     if (commandName === 'สถิติ') {
         const list = Object.values(songs);
         const byArtist = {};
@@ -1955,16 +1960,16 @@ client.on('interactionCreate', async interaction => {
                 .setImage(ASSETS.CHART)
                 .addFields(
                     { name: '🔍 ค้นหา', value: `\`${stats.totalSearches}\``, inline: true },
-                    { name: '👥 ค้นหาผู้ใช้', value: `\`${stats.totalSearchesByUser}\``, inline: true },
+                    { name: '👥 ผู้ใช้ค้นหา', value: `\`${stats.totalSearchesByUser}\``, inline: true },
                     { name: '⬇️ ดาวน์โหลด', value: `\`${stats.totalDownloads}\``, inline: true },
                     { name: '📤 อัปโหลด', value: `\`${stats.totalUploads}\``, inline: true },
                     { name: '❌ ล้มเหลว', value: `\`${stats.totalFailures}\``, inline: true },
-                    { name: '➕ เพิ่มเพลง', value: `\`${stats.totalSongsAdded}\``, inline: true },
-                    { name: '🗑️ ลบเพลง', value: `\`${stats.totalSongsRemoved}\``, inline: true },
+                    { name: '⏭️ ข้าม', value: `\`${stats.totalSkipped}\``, inline: true },
+                    { name: '🧹 เคลียร์', value: `\`${stats.totalCleaned}\``, inline: true },
+                    { name: '🗑️ ซ้ำที่ลบ', value: `\`${stats.totalDuplicatesRemoved}\``, inline: true },
+                    { name: '➕ เพิ่มสำเร็จ', value: `\`${stats.totalSongsAdded}\``, inline: true },
                     { name: '📊 ในคลัง', value: `\`${list.length}\``, inline: true },
-                    { name: '🔄 อัปเดตช่อง', value: `\`${stats.totalUpdates}\``, inline: true },
-                    { name: '⏱️ อัปไทม์', value: `\`${fmtUptime(Date.now() - stats.startTime)}\``, inline: true },
-                    { name: '🎤 Top 5 ศิลปิน', value: top.map(([a, c]) => `> ${truncate(a, 30)}: **${c}** เพลง`).join('\n') || '> ไม่มี', inline: false }
+                    { name: '🎤 Top 5', value: top.map(([a, c]) => `> ${truncate(a, 25)}: **${c}**`).join('\n') || '> ไม่มี', inline: false }
                 )
                 .setTimestamp()
             ]
@@ -1973,11 +1978,10 @@ client.on('interactionCreate', async interaction => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// [SECTION 24] - COMPONENT HANDLER
+// [SECTION 25] - COMPONENT HANDLER
 // ═══════════════════════════════════════════════════════════════════════════
 
 async function handleComponents(interaction) {
-    // Library browse buttons (PUBLIC)
     if (interaction.customId.startsWith('lib_')) {
         const match = interaction.message.embeds[0].footer?.text?.match(/หน้า (\d+)\/(\d+)/);
         if (!match) return;
@@ -1991,49 +1995,35 @@ async function handleComponents(interaction) {
         if (interaction.customId === 'lib_last') currentPage = totalPages - 1;
         
         const { embed, pages, currentPage: newPage } = buildLibraryEmbed(currentPage);
-        const buttons = buildLibraryButtons(newPage, pages);
-        
-        return interaction.update({ embeds: [embed], components: [buttons] });
+        return interaction.update({ embeds: [embed], components: [buildLibraryButtons(newPage, pages)] });
     }
     
-    // Admin only
-    if (!isAdmin(interaction)) {
-        return interaction.reply({ content: '❌ Admin เท่านั้น!', ephemeral: true });
-    }
-    if (isLocked) {
-        return interaction.reply({ content: '🔒 บอทถูกล็อกอยู่!', ephemeral: true });
-    }
+    if (!isAdmin(interaction)) return interaction.reply({ content: '❌ Admin เท่านั้น!', ephemeral: true });
+    if (isLocked) return interaction.reply({ content: '🔒 ล็อกอยู่!', ephemeral: true });
     
     if (interaction.customId === 'admin_stats') {
         const list = Object.values(songs);
         const uploaded = list.filter(s => s.robloxAssetId).length;
         return interaction.reply({
-            embeds: [new EmbedBuilder()
-                .setTitle('📊 สถิติโดยละเอียด')
-                .setColor(CONFIG.COLOR.PRIMARY)
-                .setImage(ASSETS.CHART)
+            embeds: [new EmbedBuilder().setTitle('📊 สถิติ').setColor(CONFIG.COLOR.PRIMARY).setImage(ASSETS.CHART)
                 .addFields(
-                    { name: '🔍 ค้นหา', value: `\`${stats.totalSearches}\``, inline: true },
-                    { name: '👥 ผู้ใช้ค้นหา', value: `\`${stats.totalSearchesByUser}\``, inline: true },
-                    { name: '⬇️ ดาวน์โหลด', value: `\`${stats.totalDownloads}\``, inline: true },
-                    { name: '📤 อัปโหลด', value: `\`${stats.totalUploads}\``, inline: true },
-                    { name: '❌ ล้มเหลว', value: `\`${stats.totalFailures}\``, inline: true },
-                    { name: '➕ เพิ่ม', value: `\`${stats.totalSongsAdded}\``, inline: true },
-                    { name: '🗑️ ลบ', value: `\`${stats.totalSongsRemoved}\``, inline: true },
-                    { name: '🎵 ในคลัง', value: `\`${list.length}\``, inline: true },
+                    { name: '📂 เพลง', value: `\`${list.length}\``, inline: true },
                     { name: '🟢 นำเข้า', value: `\`${uploaded}\``, inline: true },
                     { name: '🔴 รอ', value: `\`${list.length - uploaded}\``, inline: true },
-                    { name: '⏱️ อัปไทม์', value: `\`${fmtUptime(Date.now() - stats.startTime)}\``, inline: false }
+                    { name: '➕ เพิ่ม', value: `\`${stats.totalSongsAdded}\``, inline: true },
+                    { name: '⏭️ ข้าม', value: `\`${stats.totalSkipped}\``, inline: true },
+                    { name: '❌ ล้ม', value: `\`${stats.totalFailures}\``, inline: true },
+                    { name: '🧹 เคลียร์', value: `\`${stats.totalCleaned}\``, inline: true },
+                    { name: '🗑️ ซ้ำ', value: `\`${stats.totalDuplicatesRemoved}\``, inline: true }
                 )
-            ],
-            ephemeral: true
+            ], ephemeral: true
         });
     }
     
     if (interaction.customId === 'admin_backup') {
         await interaction.deferReply({ ephemeral: true });
-        await saveToCloud();
-        await interaction.editReply({ embeds: [new EmbedBuilder().setTitle('💾 สำรองแล้ว').setDescription(`${Object.keys(songs).length} เพลง`).setColor(CONFIG.COLOR.SUCCESS)] });
+        await saveToCloud(true);
+        await interaction.editReply({ embeds: [new EmbedBuilder().setTitle('💾 สำรองแล้ว').setColor(CONFIG.COLOR.SUCCESS)] });
         return;
     }
     
@@ -2050,14 +2040,13 @@ async function handleComponents(interaction) {
     if (interaction.customId === 'admin_browse') {
         const { embed, pages, currentPage } = buildLibraryEmbed(0);
         if (pages === 0) return interaction.reply({ embeds: [embed], ephemeral: true });
-        const buttons = buildLibraryButtons(currentPage, pages);
-        await interaction.reply({ embeds: [embed], components: [buttons], ephemeral: true });
+        await interaction.reply({ embeds: [embed], components: [buildLibraryButtons(currentPage, pages)], ephemeral: true });
         return;
     }
     
     if (interaction.customId === 'admin_lock') {
         isLocked = !isLocked;
-        await saveToCloud();
+        await saveToCloud(true);
         const { embed, components } = buildAdminPanel();
         await interaction.update({ embeds: [embed], components });
         return;
@@ -2065,35 +2054,24 @@ async function handleComponents(interaction) {
     
     if (interaction.customId === 'admin_setup_channels') {
         await interaction.reply({
-            embeds: [new EmbedBuilder()
-                .setTitle('📺 วิธีตั้งค่าช่อง')
-                .setDescription(
-                    '**ใช้คำสั่งต่อไปนี้:**\n\n' +
-                    '`/ตั้งค่าช่องแสดง ช่อง1:#ch1 ช่อง2:#ch2 ช่อง3:#ch3`\n' +
-                    '→ ตั้งช่องแสดงเพลง (สูงสุด 3 ช่อง)\n\n' +
-                    '`/ตั้งค่าคลังเพลง ช่อง:#library`\n' +
-                    '→ ตั้งช่องคลังเพลง (ทุกคนเห็น)\n\n' +
-                    '`/ตั้งค่าช่องแจ้งเตือน ช่อง:#notify`\n' +
-                    '→ ตั้งช่องแจ้งเตือนเพลงใหม่\n\n' +
-                    '`/ตั้งค่าช่องค้นหา ช่อง:#search`\n' +
-                    '→ ตั้งช่องค้นหา (พิมพ์ชื่อเพลงในช่องนี้)'
-                )
-                .setColor(CONFIG.COLOR.INFO)
-            ],
-            ephemeral: true
+            embeds: [new EmbedBuilder().setTitle('📺 วิธีตั้งค่าช่อง').setDescription(
+                '`/ตั้งค่าช่องแสดง ช่อง1:#ch1 ช่อง2:#ch2 ช่อง3:#ch3`\n' +
+                '`/ตั้งค่าคลังเพลง ช่อง:#library`\n' +
+                '`/ตั้งค่าช่องแจ้งเตือน ช่อง:#notify`\n' +
+                '`/ตั้งค่าช่องค้นหา ช่อง:#search`'
+            ).setColor(CONFIG.COLOR.INFO)], ephemeral: true
         });
         return;
     }
     
     if (interaction.customId === 'admin_clear') {
         const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('confirm_clear_all').setLabel('✅ ยืนยันลบทั้งหมด').setStyle(ButtonStyle.Danger),
+            new ButtonBuilder().setCustomId('confirm_clear_all').setLabel('✅ ยืนยัน').setStyle(ButtonStyle.Danger),
             new ButtonBuilder().setCustomId('cancel_clear_all').setLabel('❌ ยกเลิก').setStyle(ButtonStyle.Secondary)
         );
         await interaction.reply({
             embeds: [new EmbedBuilder().setTitle('⚠️ ยืนยัน').setDescription(`ลบ **${Object.keys(songs).length}** เพลง`).setColor(CONFIG.COLOR.ERROR)],
-            components: [row],
-            ephemeral: true
+            components: [row], ephemeral: true
         });
         return;
     }
@@ -2102,7 +2080,7 @@ async function handleComponents(interaction) {
         const count = Object.keys(songs).length;
         songs = {};
         stats.totalSongsRemoved += count;
-        await saveToCloud();
+        await saveToCloud(true);
         lastLibraryHash = '';
         lastDisplayHashes = {};
         await updateAllChannels();
@@ -2125,8 +2103,7 @@ async function handleComponents(interaction) {
         );
         await interaction.reply({
             embeds: [new EmbedBuilder().setTitle('⚠️ ยืนยัน').setDescription(`อัปโหลด **${pending.length}** เพลง`).setColor(CONFIG.COLOR.WARNING)],
-            components: [row],
-            ephemeral: true
+            components: [row], ephemeral: true
         });
         return;
     }
@@ -2140,13 +2117,10 @@ async function handleComponents(interaction) {
             const song = pending[i];
             await interaction.editReply({
                 embeds: [new EmbedBuilder()
-                    .setTitle(`📤 กำลังอัปโหลดทั้งหมด ${i+1}/${pending.length}`)
+                    .setTitle(`📤 อัปโหลด ${i+1}/${pending.length}`)
                     .setDescription(`🎵 **${truncate(song.title, 60)}**\n\n${progressBar(i, pending.length)}`)
-                    .setColor(CONFIG.COLOR.INFO)
-                    .setImage(ASSETS.UPLOAD)
-                    .setThumbnail(song.thumbnail)
-                ],
-                components: []
+                    .setColor(CONFIG.COLOR.INFO).setImage(ASSETS.UPLOAD).setThumbnail(song.thumbnail)
+                ], components: []
             });
             
             const audioPath = await downloadAudio(song.id, song.title, song.artist);
@@ -2170,18 +2144,13 @@ async function handleComponents(interaction) {
         lastLibraryHash = '';
         lastDisplayHashes = {};
         await updateAllChannels();
-        
         await interaction.editReply({
-            embeds: [new EmbedBuilder()
-                .setTitle('✅ อัปโหลดทั้งหมดเสร็จสิ้น!')
-                .setImage(ASSETS.SUCCESS)
+            embeds: [new EmbedBuilder().setTitle('✅ เสร็จสิ้น!').setImage(ASSETS.SUCCESS)
                 .addFields(
                     { name: '🟢 สำเร็จ', value: `\`${ok}\``, inline: true },
                     { name: '🔴 ล้มเหลว', value: `\`${fail}\``, inline: true }
-                )
-                .setColor(CONFIG.COLOR.SUCCESS)
-            ],
-            components: []
+                ).setColor(CONFIG.COLOR.SUCCESS)
+            ], components: []
         });
         return;
     }
@@ -2204,11 +2173,8 @@ async function handleComponents(interaction) {
                 embeds: [new EmbedBuilder()
                     .setTitle(`📤 อัปโหลด ${i+1}/${ids.length}`)
                     .setDescription(`🎵 **${truncate(song.title, 60)}**\n\n${progressBar(i, ids.length)}`)
-                    .setColor(CONFIG.COLOR.INFO)
-                    .setImage(ASSETS.UPLOAD)
-                    .setThumbnail(song.thumbnail)
-                ],
-                components: []
+                    .setColor(CONFIG.COLOR.INFO).setImage(ASSETS.UPLOAD).setThumbnail(song.thumbnail)
+                ], components: []
             });
             
             const audioPath = await downloadAudio(song.id, song.title, song.artist);
@@ -2232,25 +2198,19 @@ async function handleComponents(interaction) {
         lastLibraryHash = '';
         lastDisplayHashes = {};
         await updateAllChannels();
-        
         await interaction.editReply({
-            embeds: [new EmbedBuilder()
-                .setTitle('✅ อัปโหลดเสร็จสิ้น!')
-                .setImage(ASSETS.SUCCESS)
+            embeds: [new EmbedBuilder().setTitle('✅ เสร็จสิ้น!').setImage(ASSETS.SUCCESS)
                 .addFields(
                     { name: '🟢 สำเร็จ', value: `\`${ok}\``, inline: true },
                     { name: '🔴 ล้มเหลว', value: `\`${fail}\``, inline: true }
-                )
-                .setColor(CONFIG.COLOR.SUCCESS)
-            ],
-            components: []
+                ).setColor(CONFIG.COLOR.SUCCESS)
+            ], components: []
         });
-        return;
     }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// [SECTION 25] - ADMIN PANEL
+// [SECTION 26] - ADMIN PANEL
 // ═══════════════════════════════════════════════════════════════════════════
 
 function buildAdminPanel() {
@@ -2260,26 +2220,23 @@ function buildAdminPanel() {
     
     const embed = new EmbedBuilder()
         .setTitle('🎛️ แผงควบคุมผู้ดูแล')
-        .setDescription(
-            '**จัดการบอท Karaoke**\n' +
-            '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
-            '> เลือกปุ่มด้านล่างเพื่อดำเนินการ'
-        )
+        .setDescription('**จัดการบอท Karaoke v9.0**\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
         .addFields(
             { name: '🔒 สถานะ', value: isLocked ? '`🔒 ล็อก`' : '`🔓 ปลดล็อก`', inline: true },
             { name: '⏱️ ออนไลน์', value: `\`${fmtUptime(Date.now() - stats.startTime)}\``, inline: true },
             { name: '☁️ Storage', value: CONFIG.JSONBIN_ID ? '`✅ Cloud`' : '`⚠️ Local`', inline: true },
-            { name: '📂 เพลงทั้งหมด', value: `\`${songList.length}\``, inline: true },
-            { name: '🟢 นำเข้าแล้ว', value: `\`${uploaded}\``, inline: true },
-            { name: '🔴 รอนำเข้า', value: `\`${pending}\``, inline: true },
-            { name: '📺 ช่องแสดง', value: `\`${displayChannels.length}\``, inline: true },
-            { name: '📚 คลังเพลง', value: libraryChannelId ? '`✅ ตั้งค่า`' : '`❌ ไม่ได้ตั้ง`', inline: true },
-            { name: '🔔 แจ้งเตือน', value: notificationChannelId ? '`✅ ตั้งค่า`' : '`❌ ไม่ได้ตั้ง`', inline: true },
-            { name: '🔍 ช่องค้นหา', value: searchChannelId ? '`✅ ตั้งค่า`' : '`❌ ไม่ได้ตั้ง`', inline: true },
-            { name: '🔄 อัปเดตทั้งหมด', value: `\`${stats.totalUpdates}\` ครั้ง`, inline: true }
+            { name: '📂 เพลง', value: `\`${songList.length}\``, inline: true },
+            { name: '🟢 นำเข้า', value: `\`${uploaded}\``, inline: true },
+            { name: '🔴 รอ', value: `\`${pending}\``, inline: true },
+            { name: '➕ เพิ่มสำเร็จ', value: `\`${stats.totalSongsAdded}\``, inline: true },
+            { name: '⏭️ ข้าม', value: `\`${stats.totalSkipped}\``, inline: true },
+            { name: '🧹 เคลียร์', value: `\`${stats.totalCleaned}\``, inline: true },
+            { name: '🗑️ ซ้ำ', value: `\`${stats.totalDuplicatesRemoved}\``, inline: true },
+            { name: '❌ ล้มเหลว', value: `\`${stats.totalFailures}\``, inline: true },
+            { name: '🔄 Cleanup รอบ', value: `\`${stats.cleanupCount}\``, inline: true }
         )
         .setColor(isLocked ? CONFIG.COLOR.ERROR : CONFIG.COLOR.SUCCESS)
-        .setFooter({ text: '🎛️ Admin Panel v7.0 - Auto-Update Edition' })
+        .setFooter({ text: '🎛️ Admin Panel v9.0' })
         .setTimestamp();
     
     const row1 = new ActionRowBuilder().addComponents(
@@ -2290,11 +2247,7 @@ function buildAdminPanel() {
     );
     
     const row2 = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-            .setCustomId('admin_lock')
-            .setLabel(isLocked ? 'ปลดล็อก' : 'ล็อก')
-            .setStyle(isLocked ? ButtonStyle.Success : ButtonStyle.Danger)
-            .setEmoji(isLocked ? '🔓' : '🔒'),
+        new ButtonBuilder().setCustomId('admin_lock').setLabel(isLocked ? 'ปลดล็อก' : 'ล็อก').setStyle(isLocked ? ButtonStyle.Success : ButtonStyle.Danger).setEmoji(isLocked ? '🔓' : '🔒'),
         new ButtonBuilder().setCustomId('admin_upload_all').setLabel('อัปโหลดทั้งหมด').setStyle(ButtonStyle.Primary).setEmoji('📤'),
         new ButtonBuilder().setCustomId('admin_setup_channels').setLabel('วิธีตั้งค่า').setStyle(ButtonStyle.Secondary).setEmoji('📺'),
         new ButtonBuilder().setCustomId('admin_clear').setLabel('ล้างทั้งหมด').setStyle(ButtonStyle.Danger).setEmoji('🗑️')
@@ -2304,12 +2257,11 @@ function buildAdminPanel() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// [SECTION 26] - LOGIN
+// [SECTION 27] - LOGIN
 // ═══════════════════════════════════════════════════════════════════════════
 
 client.login(CONFIG.DISCORD_TOKEN);
 
 // ═══════════════════════════════════════════════════════════════════════════
-// END OF FILE - v7.0 Auto-Update Edition
-// Total: 3000+ lines
+// END - v9.0 Clean & Smart Edition
 // ═══════════════════════════════════════════════════════════════════════════
