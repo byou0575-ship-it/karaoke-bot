@@ -3,21 +3,16 @@ services:
     name: karaoke-bot
     env: node
     plan: free
-    buildCommand: |
-      npm install
-      wget -O yt-dlp https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux
-      chmod +x yt-dlp
+    buildCommand: npm install
     startCommand: node server.js
     envVars:
       - key: NODE_VERSION
         value: 20.11.1
-      - key: YTDL_NO_UPDATE
-        value: 1
       - key: DISCORD_BOT_TOKEN
-        sync: false
-      - key: YOUTUBE_API_KEY
         sync: false
       - key: ROBLOX_API_KEY
         sync: false
       - key: ROBLOX_USER_ID
+        sync: false
+      - key: MUSIC_API_URL
         sync: false
