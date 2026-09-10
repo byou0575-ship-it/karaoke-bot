@@ -12,6 +12,6 @@
     "express": "^4.19.2",
     "axios": "^1.7.2",
     "form-data": "^4.0.0",
-    "play-dl": "^1.9.7"
+    "@distube/ytdl-core": "^4.16.10"
   }
 }
