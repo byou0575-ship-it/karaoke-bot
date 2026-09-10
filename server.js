@@ -24,6 +24,26 @@ let autoTask = null;
 let songChannelId = null;
 let refreshTask = null;
 
+// ★★★ ตั้งค่า Cookies ให้ play-dl ★★★
+const cookiesPath = path.join(__dirname, 'cookies.txt');
+let cookiesLoaded = false;
+
+if (fs.existsSync(cookiesPath)) {
+    try {
+        playdl.setToken({
+            youtube: {
+                cookie: fs.readFileSync(cookiesPath, 'utf8')
+            }
+        });
+        cookiesLoaded = true;
+        console.log('✅ Cookies loaded successfully!');
+    } catch (err) {
+        console.error('❌ Failed to load cookies:', err.message);
+    }
+} else {
+    console.log('⚠️ cookies.txt not found. Bot may fail to download.');
+}
+
 const COMPILATION_KEYWORDS = [
     "รวมเพลง", "playlist", "อัลบั้ม", "album", "mixtape", "compilation",
     "รวมฮิต", "best of", "greatest hits", "non-stop", "nonstop", "mix",
@@ -101,11 +121,12 @@ function parseISODuration(iso) {
     return (parseInt(m[1] || 0) * 3600) + (parseInt(m[2] || 0) * 60) + parseInt(m[3] || 0);
 }
 
-// ★★★ ดาวน์โหลดเสียงด้วย play-dl ★★★
+// ★★★ ดาวน์โหลดเสียงด้วย play-dl + Cookies ★★★
 async function downloadAudio(videoId) {
     const tempPath = path.join('/tmp', `${videoId}.mp3`);
     const url = `https://www.youtube.com/watch?v=${videoId}`;
     
+    // ใช้ play-dl ในการดาวน์โหลด (มันจะใช้ cookies ที่ตั้งค่าไว้)
     const stream = await playdl.stream(url, { quality: 2 });
     const writeStream = fs.createWriteStream(tempPath);
     
@@ -314,6 +335,7 @@ async function runAutoSearch(channel) {
 
 client.once('ready', async () => {
     console.log(`Logged in as ${client.user.tag}!`);
+    if (cookiesLoaded) console.log('✅ Cookies are active for play-dl');
     startAutoRefresh();
 
     const commands = [
