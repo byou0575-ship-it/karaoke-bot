@@ -1,7 +1,7 @@
 {
   "name": "karaoke-bot",
   "version": "1.0.0",
-  "description": "Karaoke Bot with YouTube + Roblox upload",
+  "description": "Karaoke Bot with JOOX + Roblox upload",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
@@ -11,7 +11,6 @@
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "axios": "^1.7.2",
-    "form-data": "^4.0.0",
-    "youtube-dl-exec": "^3.0.10"
+    "form-data": "^4.0.0"
   }
 }
