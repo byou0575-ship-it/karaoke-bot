@@ -6,11 +6,12 @@
 // ██║  ██╗██║  ██║██║  ██║██║  ██║╚██████╔╝██║  ██╗███████╗    ██████╔╝╚██████╔╝   ██║   
 // ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝╚══════╝    ╚═════╝  ╚═════╝    ╚═╝   
 //
-// KARAOKE BOT ULTIMATE EDITION v3.1 (JSONBin Edition)
+// KARAOKE BOT ULTIMATE EDITION v3.2 (JSONBin + Pagination)
 // - ระบบ Lock/Unlock ด้วย Key (Admin เท่านั้น)
 // - ระบบ Fallback 3 ชั้นสำหรับดาวน์โหลด
 // - ระบบเลือกอัปโหลดเพลงขึ้น Roblox
-// - ระบบ Auto-Search
+// - ระบบ Auto-Search ทีละ 10 เพลง วนไปเรื่อยๆ
+// - ระบบแบ่งหน้าแสดงรายการเพลง (Pagination)
 // - บันทึกข้อมูลลง JSONBin (ถาวร)
 // ============================================================================
 
@@ -47,12 +48,13 @@ const CONFIG = {
     ROBLOX_API_KEY: process.env.ROBLOX_API_KEY,
     ROBLOX_USER_ID: process.env.ROBLOX_USER_ID,
     MUSIC_API_URL: process.env.MUSIC_API_URL || 'https://joox-api.onrender.com',
-    JSONBIN_ID: process.env.JSONBIN_ID,     // ✅ เพิ่มตามที่คุณต้องการ
-    JSONBIN_KEY: process.env.JSONBIN_KEY,   // ✅ เพิ่มตามที่คุณต้องการ
-    UNLOCK_KEY: 'Owjadk@#23241hxb', // ⚠️ Key สำหรับปลดล็อกบอท (Hardcode)
+    JSONBIN_ID: process.env.JSONBIN_ID,
+    JSONBIN_KEY: process.env.JSONBIN_KEY,
+    UNLOCK_KEY: 'Owjadk@#23241hxb',
     HTTP_TIMEOUT: 120000,
     MAX_FILE_SIZE: 20 * 1024 * 1024,
-    RATE_LIMIT_MS: 5000
+    RATE_LIMIT_MS: 5000,
+    SONGS_PER_PAGE: 10 // ✅ จำนวนเพลงต่อหน้า
 };
 
 // ============================================================================
@@ -112,12 +114,11 @@ const client = new Client({
 });
 
 // ============================================================================
-// [SECTION 6] DATA STORAGE (JSONBin Integration)
+// [SECTION 6] DATA STORAGE (JSONBin)
 // ============================================================================
 
 const JSONBIN_URL = `https://api.jsonbin.io/v3/b/${CONFIG.JSONBIN_ID}`;
 
-// ฟังก์ชันโหลดข้อมูลจาก JSONBin
 async function loadDataFromJSONBin() {
     if (!CONFIG.JSONBIN_ID || !CONFIG.JSONBIN_KEY) {
         console.log('⚠️ JSONBin ID or Key not found. Using empty data.');
@@ -131,7 +132,6 @@ async function loadDataFromJSONBin() {
                 'Content-Type': 'application/json'
             }
         });
-        
         const data = response.data.record;
         if (data) {
             songs = data.songs || {};
@@ -144,7 +144,6 @@ async function loadDataFromJSONBin() {
     }
 }
 
-// ฟังก์ชันเซฟข้อมูลขึ้น JSONBin
 async function saveDataToJSONBin() {
     if (!CONFIG.JSONBIN_ID || !CONFIG.JSONBIN_KEY) {
         console.log('⚠️ Cannot save to JSONBin: Missing ID or Key');
@@ -157,7 +156,6 @@ async function saveDataToJSONBin() {
             isLocked: isLocked,
             lastUpdated: new Date().toISOString()
         };
-        
         await axios.put(JSONBIN_URL, dataToSave, {
             headers: {
                 'X-Master-Key': CONFIG.JSONBIN_KEY,
@@ -170,7 +168,6 @@ async function saveDataToJSONBin() {
     }
 }
 
-// เรียกใช้ loadData ทันที
 loadDataFromJSONBin();
 
 // ============================================================================
@@ -261,6 +258,75 @@ function progressBar(current, total, length = 20) {
 }
 
 // ============================================================================
+// [SECTION 9.5] PAGINATION BUILDER (ใหม่)
+// ============================================================================
+
+function buildSongsPageEmbed(page = 1) {
+    const songList = Object.values(songs);
+    const totalPages = Math.max(1, Math.ceil(songList.length / CONFIG.SONGS_PER_PAGE));
+    const currentPage = Math.min(Math.max(1, page), totalPages);
+    
+    const start = (currentPage - 1) * CONFIG.SONGS_PER_PAGE;
+    const end = start + CONFIG.SONGS_PER_PAGE;
+    const pageItems = songList.slice(start, end);
+    
+    const uploaded = songList.filter(s => s.robloxAssetId).length;
+    
+    const embed = new EmbedBuilder()
+        .setTitle('🎤 รายการเพลง Karaoke (JOOX)')
+        .setColor(0x000000)
+        .setFooter({ 
+            text: `หน้า ${currentPage}/${totalPages} · รวม ${songList.length} เพลง · 🟢 ${uploaded} · 🔴 ${songList.length - uploaded} · ${new Date().toLocaleTimeString('th-TH')}` 
+        });
+    
+    if (pageItems.length === 0) {
+        embed.setDescription('*ยังไม่มีเพลง — ใช้ `/หาเพลง`*');
+    } else {
+        let desc = '';
+        pageItems.forEach((s, i) => {
+            const num = start + i + 1;
+            const r = s.robloxAssetId ? `🟢 \`${s.robloxAssetId}\`` : `🔴 ยังไม่อัปโหลด`;
+            desc += `**${num}. ${s.title}**\n　🎤 ${s.artist}\n　${r}\n\n`;
+        });
+        embed.setDescription(desc);
+    }
+    
+    return { embed, currentPage, totalPages };
+}
+
+function buildPaginationRow(currentPage, totalPages) {
+    if (totalPages <= 1) return null;
+    
+    return new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId(`songs_page_first`)
+            .setLabel('⏮️')
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(currentPage === 1),
+        new ButtonBuilder()
+            .setCustomId(`songs_page_prev`)
+            .setLabel('◀️ ก่อนหน้า')
+            .setStyle(ButtonStyle.Primary)
+            .setDisabled(currentPage === 1),
+        new ButtonBuilder()
+            .setCustomId(`songs_page_info`)
+            .setLabel(`หน้า ${currentPage}/${totalPages}`)
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(true),
+        new ButtonBuilder()
+            .setCustomId(`songs_page_next`)
+            .setLabel('ถัดไป ▶️')
+            .setStyle(ButtonStyle.Primary)
+            .setDisabled(currentPage === totalPages),
+        new ButtonBuilder()
+            .setCustomId(`songs_page_last`)
+            .setLabel('⏭️')
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(currentPage === totalPages)
+    );
+}
+
+// ============================================================================
 // [SECTION 10] JOOX SEARCH
 // ============================================================================
 
@@ -290,7 +356,6 @@ async function searchJoox(query) {
 
 async function getDirectUrl(songId, source = 'joox') {
     try {
-        console.log(`🔗 [Layer 1] Direct URL for: ${songId}`);
         const response = await axios.get(`${CONFIG.MUSIC_API_URL}/api/v1/music/url`, {
             params: { id: songId, source: source },
             timeout: 60000
@@ -301,7 +366,6 @@ async function getDirectUrl(songId, source = 'joox') {
         if (data?.link) return data.link;
         return null;
     } catch (error) {
-        console.error(`❌ Layer 1: ${error.message}`);
         return null;
     }
 }
@@ -312,7 +376,6 @@ async function getDirectUrl(songId, source = 'joox') {
 
 async function downloadViaStream(songId, source = 'joox') {
     try {
-        console.log(`🌊 [Layer 2] Stream proxy: ${songId}`);
         const streamUrl = `${CONFIG.MUSIC_API_URL}/api/v1/music/stream?id=${encodeURIComponent(songId)}&source=${source}`;
         const response = await axios.get(streamUrl, {
             responseType: 'stream',
@@ -328,7 +391,6 @@ async function downloadViaStream(songId, source = 'joox') {
         if (!ct.includes('audio') && !ct.includes('octet-stream')) return null;
         return response.data;
     } catch (error) {
-        console.error(`❌ Layer 2: ${error.message}`);
         return null;
     }
 }
@@ -339,7 +401,6 @@ async function downloadViaStream(songId, source = 'joox') {
 
 async function switchSource(songId, songName, artist, source = 'joox') {
     try {
-        console.log(`🔄 [Layer 3] Switch source`);
         const response = await axios.get(`${CONFIG.MUSIC_API_URL}/api/v1/music/switch`, {
             params: { id: songId, source, name: songName, artist: artist },
             timeout: 90000
@@ -349,7 +410,6 @@ async function switchSource(songId, songName, artist, source = 'joox') {
         if (response.data?.id) return { type: 'id', id: response.data.id, source: response.data.source };
         return null;
     } catch (error) {
-        console.error(`❌ Layer 3: ${error.message}`);
         return null;
     }
 }
@@ -379,7 +439,7 @@ async function downloadAudio(songId, songName, artist, source = 'joox') {
             if (size > 1024) { stats.totalDownloads++; return tempPath; }
             fs.unlinkSync(tempPath);
         }
-    } catch (e) { console.error(`❌ Layer 1 failed: ${e.message}`); }
+    } catch (e) {}
     
     // Layer 2: Stream proxy
     try {
@@ -392,7 +452,7 @@ async function downloadAudio(songId, songName, artist, source = 'joox') {
             if (size > 1024) { stats.totalDownloads++; return tempPath; }
             fs.unlinkSync(tempPath);
         }
-    } catch (e) { console.error(`❌ Layer 2 failed: ${e.message}`); }
+    } catch (e) {}
     
     // Layer 3: Switch source
     try {
@@ -426,7 +486,7 @@ async function downloadAudio(songId, songName, artist, source = 'joox') {
                 fs.unlinkSync(tempPath);
             }
         }
-    } catch (e) { console.error(`❌ Layer 3 failed: ${e.message}`); }
+    } catch (e) {}
     
     stats.totalFailures++;
     return null;
@@ -519,9 +579,7 @@ async function processSong(song, interaction = null, index = 0, total = 1) {
             addedAt: new Date().toISOString()
         };
         
-        // ✅ เซฟขึ้น JSONBin ทันที
         await saveDataToJSONBin();
-        
         try { fs.unlinkSync(audioPath); } catch (e) {}
         await refreshMessage();
         
@@ -532,56 +590,37 @@ async function processSong(song, interaction = null, index = 0, total = 1) {
 }
 
 // ============================================================================
-// [SECTION 17] REFRESH MESSAGE
+// [SECTION 17] REFRESH MESSAGE (ใช้ Pagination)
 // ============================================================================
+
+let currentSongPage = 1;
 
 async function refreshMessage() {
     if (!songChannelId) return;
     try {
         const channel = client.channels.cache.get(songChannelId);
         if (!channel) return;
-        const songList = Object.values(songs);
         
-        if (songList.length === 0) {
-            const embed = new EmbedBuilder()
-                .setTitle('🎤 รายการเพลง Karaoke')
-                .setDescription('*ยังไม่มีเพลง — ใช้ `/หาเพลง`*')
-                .setColor(0x000000)
-                .setFooter({ text: `อัปเดต: ${new Date().toLocaleTimeString('th-TH')}` });
-            const existing = await channel.messages.fetch({ limit: 5 }).catch(() => []);
-            for (const msg of existing.values()) {
-                if (msg.author.id === client.user.id && msg.embeds.length > 0) {
-                    await msg.edit({ embeds: [embed] }).catch(() => {});
-                    return;
-                }
-            }
-            await channel.send({ embeds: [embed] });
-            return;
-        }
+        const { embed, currentPage, totalPages } = buildSongsPageEmbed(currentSongPage);
+        const row = buildPaginationRow(currentPage, totalPages);
+        currentSongPage = currentPage;
         
-        const chunk = songList.slice(0, 10);
-        const uploaded = songList.filter(s => s.robloxAssetId).length;
-        const embed = new EmbedBuilder()
-            .setTitle('🎤 รายการเพลง Karaoke (JOOX)')
-            .setColor(0x000000)
-            .setFooter({ text: `รวม ${songList.length} เพลง · 🟢 ${uploaded} · 🔴 ${songList.length - uploaded} · ${new Date().toLocaleTimeString('th-TH')}` });
+        const messagePayload = {
+            embeds: [embed],
+            components: row ? [row] : []
+        };
         
-        let desc = '';
-        chunk.forEach((s, i) => {
-            const r = s.robloxAssetId ? `🟢 \`${s.robloxAssetId}\`` : `🔴 ยังไม่อัปโหลด`;
-            desc += `**${i+1}. ${s.title}**\n　🎤 ${s.artist}\n　${r}\n\n`;
-        });
-        embed.setDescription(desc);
-        
+        // ค้นหาข้อความเดิมของบอท
         const existing = await channel.messages.fetch({ limit: 10 }).catch(() => []);
         let edited = false;
         for (const msg of existing.values()) {
             if (msg.author.id === client.user.id && msg.embeds.length > 0) {
-                await msg.edit({ embeds: [embed] }).catch(() => {});
-                edited = true; break;
+                await msg.edit(messagePayload).catch(() => {});
+                edited = true;
+                break;
             }
         }
-        if (!edited) await channel.send({ embeds: [embed] });
+        if (!edited) await channel.send(messagePayload);
     } catch (error) { console.error('❌ Refresh error:', error.message); }
 }
 
@@ -597,34 +636,76 @@ function startAutoRefresh() {
 }
 
 // ============================================================================
-// [SECTION 19] AUTO SEARCH
+// [SECTION 19] AUTO SEARCH (แก้ใหม่: ทีละ 10 เพลง วนไปเรื่อยๆ)
 // ============================================================================
 
 async function runAutoSearch(channel) {
     if (isLocked) return;
     try {
+        console.log('\n🤖 Auto-search: เริ่มรอบใหม่...');
         const searchMsg = await channel.send({
-            embeds: [new EmbedBuilder().setTitle('🔍 ระบบอัตโนมัติกำลังหาเพลง...').setColor(0xf1c40f)]
+            embeds: [new EmbedBuilder()
+                .setTitle('🔍 ระบบอัตโนมัติกำลังหาเพลง...')
+                .setDescription('กำลังดึงข้อมูลจาก JOOX')
+                .setColor(0xf1c40f)]
         });
+        
+        // ค้นหาเพลงไทย
         const results = await searchJoox('เพลงไทย');
         if (results.length === 0) {
             await searchMsg.edit({ embeds: [new EmbedBuilder().setTitle('⏭️ ไม่พบเพลง').setColor(0xe67e22)] });
             return;
         }
-        for (let i = 0; i < results.length; i++) {
-            const result = await processSong(results[i], searchMsg, i, results.length);
-            if (result.status === 'success') {
-                await searchMsg.edit({
-                    embeds: [new EmbedBuilder()
-                        .setTitle('✅ เพิ่มเพลงสำเร็จ!')
-                        .setDescription(`🎵 **${result.song.title}**\n🎤 ${result.song.artist}\n🟢 Roblox: ${result.uploadResult.assetId || 'failed'}\n\n🔄 หาใหม่ใน 60 วิ`)
-                        .setColor(0x57F287)]
-                });
-                return;
-            }
+        
+        // ✅ กรองเพลงที่มีอยู่แล้วออก
+        const newSongs = results.filter(s => !songs[s.id] && !isBanned(s.name || '', s.artist || ''));
+        
+        if (newSongs.length === 0) {
+            await searchMsg.edit({ 
+                embeds: [new EmbedBuilder()
+                    .setTitle('⏭️ ไม่มีเพลงใหม่')
+                    .setDescription('เพลงทั้งหมดมีอยู่ในคลังแล้ว')
+                    .setColor(0xe67e22)] 
+            });
+            return;
         }
-        await searchMsg.edit({ embeds: [new EmbedBuilder().setTitle('⏭️ ไม่มีเพลงใหม่').setColor(0xe67e22)] });
-    } catch (error) { console.error('❌ Auto error:', error.message); }
+        
+        // ✅ จำกัด 10 เพลงต่อรอบ
+        const songsToProcess = newSongs.slice(0, 10);
+        
+        await searchMsg.edit({
+            embeds: [new EmbedBuilder()
+                .setTitle(`🎵 กำลังเพิ่ม ${songsToProcess.length} เพลง`)
+                .setDescription(`จากทั้งหมด ${newSongs.length} เพลงใหม่`)
+                .setColor(0x3498db)]
+        });
+        
+        let successCount = 0;
+        let failCount = 0;
+        
+        // วนลูปเพิ่มทีละเพลง (เหมือน /เพลงฮิต)
+        for (let i = 0; i < songsToProcess.length; i++) {
+            const result = await processSong(songsToProcess[i], searchMsg, i, songsToProcess.length);
+            if (result.status === 'success') successCount++;
+            else failCount++;
+            await sleep(3000); // ✅ ห่างกัน 3 วิ (เหมือน /เพลงฮิต)
+        }
+        
+        await searchMsg.edit({
+            embeds: [new EmbedBuilder()
+                .setTitle('✅ รอบนี้เสร็จสิ้น!')
+                .setDescription(`เพิ่มสำเร็จ **${successCount}** เพลง\nล้มเหลว **${failCount}** เพลง`)
+                .addFields(
+                    { name: '⏱️ รอรอบถัดไป', value: '60 วินาที', inline: true },
+                    { name: '🔄 สถานะ', value: 'ยังทำงานอยู่ (วนไปเรื่อยๆ)', inline: true }
+                )
+                .setColor(0x57F287)]
+        });
+        
+        console.log(`✅ Auto-search รอบนี้: สำเร็จ ${successCount}, ล้มเหลว ${failCount}`);
+    } catch (error) {
+        console.error('❌ Auto error:', error.message);
+    }
 }
 
 // ============================================================================
@@ -657,7 +738,7 @@ client.once('ready', async () => {
             .addStringOption(o => o.setName('ชื่อศิลปิน').setDescription('ชื่อศิลปิน').setRequired(true))
             .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
         new SlashCommandBuilder().setName('เพลงฮิต').setDescription('ดึงเพลงยอดนิยม').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-        new SlashCommandBuilder().setName('เริ่มหาเพลง').setDescription('เริ่มระบบอัตโนมัติ').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+        new SlashCommandBuilder().setName('เริ่มหาเพลง').setDescription('เริ่มระบบอัตโนมัติ (ทีละ 10 เพลง วนไปเรื่อยๆ)').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
         new SlashCommandBuilder().setName('หยุดหาเพลง').setDescription('หยุดระบบอัตโนมัติ').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
         new SlashCommandBuilder().setName('ลบเพลง').setDescription('ลบเพลงออกจากระบบ')
             .addStringOption(o => o.setName('id').setDescription('ID เพลง').setRequired(true))
@@ -682,6 +763,11 @@ client.once('ready', async () => {
 // ============================================================================
 
 client.on('interactionCreate', async interaction => {
+    // ✅ จัดการ Pagination Buttons (ต้องมาก่อน isChatInputCommand)
+    if (interaction.isButton() && interaction.customId.startsWith('songs_page_')) {
+        return handlePaginationButton(interaction);
+    }
+    
     if (interaction.isStringSelectMenu() || interaction.isButton()) {
         return handleComponents(interaction);
     }
@@ -725,7 +811,8 @@ client.on('interactionCreate', async interaction => {
                     { name: '📂 เพลงในคลัง', value: `${songList.length} เพลง`, inline: true },
                     { name: '🟢 อัปโหลดแล้ว', value: `${uploaded} เพลง`, inline: true },
                     { name: '🔴 ยังไม่อัปโหลด', value: `${songList.length - uploaded} เพลง`, inline: true },
-                    { name: '📦 JSONBin', value: CONFIG.JSONBIN_ID ? 'เชื่อมต่อแล้ว' : 'ไม่ได้ตั้งค่า', inline: true }
+                    { name: '📦 JSONBin', value: CONFIG.JSONBIN_ID ? 'เชื่อมต่อแล้ว' : 'ไม่ได้ตั้งค่า', inline: true },
+                    { name: '🤖 Auto-Search', value: autoTask ? '🟢 กำลังทำงาน' : '🔴 หยุดอยู่', inline: true }
                 ).setColor(isLocked ? 0xe74c3c : 0x57F287)]
         });
     }
@@ -758,8 +845,9 @@ client.on('interactionCreate', async interaction => {
     // /ตั้งค่า
     if (commandName === 'ตั้งค่า') {
         songChannelId = interaction.channelId;
+        currentSongPage = 1;
         await saveDataToJSONBin();
-        await interaction.reply({ embeds: [replyEmbed.setDescription('✅ ตั้งค่าช่องเพลงแล้ว!')] });
+        await interaction.reply({ embeds: [replyEmbed.setDescription('✅ ตั้งค่าช่องเพลงแล้ว! (มีปุ่มเลื่อนหน้า)')] });
         await refreshMessage();
     }
     
@@ -856,7 +944,11 @@ client.on('interactionCreate', async interaction => {
         if (autoTask) return interaction.reply({ embeds: [replyEmbed.setDescription('⚠️ ระบบทำงานอยู่แล้ว!')] });
         songChannelId = interaction.channelId;
         await saveDataToJSONBin();
-        await interaction.reply({ embeds: [replyEmbed.setDescription('🚀 เริ่มระบบอัตโนมัติ!')] });
+        await interaction.reply({ 
+            embeds: [replyEmbed
+                .setDescription('🚀 เริ่มระบบอัตโนมัติแล้ว!\nจะเพิ่มทีละ **10 เพลง** ทุก **60 วินาที**\n\nใช้ `/หยุดหาเพลง` เพื่อหยุด')
+                .setColor(0x57F287)] 
+        });
         await runAutoSearch(interaction.channel);
         autoTask = setInterval(async () => {
             const ch = client.channels.cache.get(interaction.channelId);
@@ -869,7 +961,7 @@ client.on('interactionCreate', async interaction => {
         if (autoTask) {
             clearInterval(autoTask);
             autoTask = null;
-            await interaction.reply({ embeds: [replyEmbed.setDescription('⏹️ หยุดแล้ว!')] });
+            await interaction.reply({ embeds: [replyEmbed.setDescription('⏹️ หยุดระบบอัตโนมัติแล้ว!')] });
         } else {
             await interaction.reply({ embeds: [replyEmbed.setDescription('⚠️ ไม่ได้ทำงานอยู่!')] });
         }
@@ -958,7 +1050,39 @@ client.on('interactionCreate', async interaction => {
 });
 
 // ============================================================================
-// [SECTION 22] COMPONENT HANDLER
+// [SECTION 22] PAGINATION BUTTON HANDLER (ใหม่)
+// ============================================================================
+
+async function handlePaginationButton(interaction) {
+    try {
+        const songList = Object.values(songs);
+        const totalPages = Math.max(1, Math.ceil(songList.length / CONFIG.SONGS_PER_PAGE));
+        let newPage = currentSongPage;
+        
+        switch (interaction.customId) {
+            case 'songs_page_first': newPage = 1; break;
+            case 'songs_page_prev': newPage = Math.max(1, currentSongPage - 1); break;
+            case 'songs_page_next': newPage = Math.min(totalPages, currentSongPage + 1); break;
+            case 'songs_page_last': newPage = totalPages; break;
+            case 'songs_page_info': return; // ปุ่มแสดงข้อมูล ไม่ต้องทำอะไร
+        }
+        
+        currentSongPage = newPage;
+        
+        const { embed, currentPage, totalPages: tp } = buildSongsPageEmbed(newPage);
+        const row = buildPaginationRow(currentPage, tp);
+        
+        await interaction.update({
+            embeds: [embed],
+            components: row ? [row] : []
+        });
+    } catch (error) {
+        console.error('❌ Pagination error:', error.message);
+    }
+}
+
+// ============================================================================
+// [SECTION 23] COMPONENT HANDLER
 // ============================================================================
 
 async function handleComponents(interaction) {
@@ -1057,7 +1181,7 @@ async function handleComponents(interaction) {
 }
 
 // ============================================================================
-// [SECTION 23] LOGIN
+// [SECTION 24] LOGIN
 // ============================================================================
 
 client.login(CONFIG.DISCORD_TOKEN);
