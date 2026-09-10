@@ -24,15 +24,9 @@ let autoTask = null;
 let songChannelId = null;
 let refreshTask = null;
 
-// ★★★ หา cookies ★★★
 const cookiesPath = path.join(__dirname, 'cookies.txt');
 const hasCookies = fs.existsSync(cookiesPath);
-
-if (hasCookies) {
-    console.log('✅ cookies.txt found. Will use for yt-dlp');
-} else {
-    console.log('⚠️ cookies.txt not found.');
-}
+console.log(hasCookies ? '✅ cookies.txt found.' : '⚠️ cookies.txt NOT found.');
 
 const COMPILATION_KEYWORDS = [
     "รวมเพลง", "playlist", "อัลบั้ม", "album", "mixtape", "compilation",
@@ -111,7 +105,7 @@ function parseISODuration(iso) {
     return (parseInt(m[1] || 0) * 3600) + (parseInt(m[2] || 0) * 60) + parseInt(m[3] || 0);
 }
 
-// ★★★ ดาวน์โหลดเสียงด้วย yt-dlp ★★★
+// ★★★ ดาวน์โหลดเสียงด้วย yt-dlp (แก้ไข extractor args) ★★★
 async function downloadAudio(videoId) {
     const tempPath = path.join('/tmp', `${videoId}.mp3`);
     const url = `https://www.youtube.com/watch?v=${videoId}`;
@@ -124,7 +118,14 @@ async function downloadAudio(videoId) {
         noWarnings: true,
         noCheckCertificates: true,
         preferFreeFormats: true,
-        addHeader: ['referer:youtube.com', 'user-agent:googlebot']
+        // ✅ สำคัญมาก! ใช้ m4a และ web_safari เพื่อให้ IP คลาวด์ผ่านได้
+        format: 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best',
+        extractorArgs: 'youtube:player_client=web_safari,default;skip=hls,dash',
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        addHeader: [
+            'referer:https://www.youtube.com/',
+            'accept-language:en-US,en;q=0.9'
+        ]
     };
 
     if (hasCookies) {
@@ -133,9 +134,12 @@ async function downloadAudio(videoId) {
 
     try {
         await youtubedl(url, options);
+        if (!fs.existsSync(tempPath)) {
+            throw new Error('File not created after download');
+        }
         return tempPath;
     } catch (error) {
-        console.error('yt-dlp download error:', error.message);
+        console.error('yt-dlp download error:', error.stderr || error.message);
         throw new Error(`Download failed: ${error.message}`);
     }
 }
