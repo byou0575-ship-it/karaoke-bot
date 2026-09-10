@@ -1,7 +1,7 @@
 const { Client, GatewayIntentBits, EmbedBuilder, SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 const express = require('express');
 const axios = require('axios');
-const ytdl = require('@distube/ytdl-core');
+const youtubedl = require('youtube-dl-exec');
 const FormData = require('form-data');
 const fs = require('fs');
 const path = require('path');
@@ -24,50 +24,14 @@ let autoTask = null;
 let songChannelId = null;
 let refreshTask = null;
 
-// ★★★ โหลด Cookies (แก้แบบ Manual - ใช้ได้กับทุกเวอร์ชัน) ★★★
+// ★★★ หา cookies ★★★
 const cookiesPath = path.join(__dirname, 'cookies.txt');
-let agent = null;
+const hasCookies = fs.existsSync(cookiesPath);
 
-if (fs.existsSync(cookiesPath)) {
-    try {
-        const cookieContent = fs.readFileSync(cookiesPath, 'utf8');
-        const cookiesArray = cookieContent
-            .split('\n')
-            .filter(line => !line.startsWith('#') && line.trim() !== '')
-            .map(line => {
-                const parts = line.split('\t');
-                if (parts.length >= 7) {
-                    return {
-                        name: parts[5].trim(),
-                        value: parts[6].trim(),
-                        domain: parts[0].trim(),
-                        path: parts[2].trim(),
-                        secure: parts[3].trim() === 'TRUE',
-                        httpOnly: false,
-                        expirationDate: parseInt(parts[4].trim()) || Math.floor(Date.now() / 1000) + 86400
-                    };
-                }
-                return null;
-            })
-            .filter(c => c !== null);
-
-        if (cookiesArray.length > 0) {
-            // สร้าง agent จาก cookies array
-            if (typeof ytdl.createAgent === 'function') {
-                agent = ytdl.createAgent(cookiesArray);
-                console.log(`✅ Cookies loaded (${cookiesArray.length} items) via createAgent`);
-            } else {
-                console.log('⚠️ createAgent not available in this version of ytdl-core');
-            }
-        } else {
-            console.log('⚠️ No valid cookies found');
-        }
-    } catch (err) {
-        console.error('❌ Failed to load cookies:', err.message);
-        agent = null;
-    }
+if (hasCookies) {
+    console.log('✅ cookies.txt found. Will use for yt-dlp');
 } else {
-    console.log('⚠️ cookies.txt not found. Bot may fail.');
+    console.log('⚠️ cookies.txt not found.');
 }
 
 const COMPILATION_KEYWORDS = [
@@ -147,25 +111,33 @@ function parseISODuration(iso) {
     return (parseInt(m[1] || 0) * 3600) + (parseInt(m[2] || 0) * 60) + parseInt(m[3] || 0);
 }
 
+// ★★★ ดาวน์โหลดเสียงด้วย yt-dlp ★★★
 async function downloadAudio(videoId) {
     const tempPath = path.join('/tmp', `${videoId}.mp3`);
     const url = `https://www.youtube.com/watch?v=${videoId}`;
 
     const options = {
-        quality: 'highestaudio',
-        filter: 'audioonly'
+        extractAudio: true,
+        audioFormat: 'mp3',
+        audioQuality: '192',
+        output: tempPath,
+        noWarnings: true,
+        noCheckCertificates: true,
+        preferFreeFormats: true,
+        addHeader: ['referer:youtube.com', 'user-agent:googlebot']
     };
-    if (agent) options.agent = agent;
 
-    const stream = ytdl(url, options);
-    const writeStream = fs.createWriteStream(tempPath);
+    if (hasCookies) {
+        options.cookies = cookiesPath;
+    }
 
-    return new Promise((resolve, reject) => {
-        stream.pipe(writeStream);
-        writeStream.on('finish', () => resolve(tempPath));
-        writeStream.on('error', reject);
-        stream.on('error', reject);
-    });
+    try {
+        await youtubedl(url, options);
+        return tempPath;
+    } catch (error) {
+        console.error('yt-dlp download error:', error.message);
+        throw new Error(`Download failed: ${error.message}`);
+    }
 }
 
 async function uploadToRoblox(filePath, title, artist) {
