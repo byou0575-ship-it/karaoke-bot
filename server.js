@@ -1,7 +1,7 @@
-const { Client, GatewayIntentBits, EmbedBuilder, SlashCommandBuilder, PermissionFlagsBits, AttachmentBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder, SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 const express = require('express');
 const axios = require('axios');
-const ytdl = require('@distube/ytdl-core');
+const playdl = require('play-dl');
 const FormData = require('form-data');
 const fs = require('fs');
 const path = require('path');
@@ -14,7 +14,6 @@ const ROBLOX_USER_ID = process.env.ROBLOX_USER_ID;
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
 
-// Express Server
 const app = express();
 app.get('/', (req, res) => { res.send('Bot is running!'); });
 const PORT = process.env.PORT || 10000;
@@ -25,7 +24,6 @@ let autoTask = null;
 let songChannelId = null;
 let refreshTask = null;
 
-// คำที่ใช้ตรวจสอบว่าเป็นเพลงรวม
 const COMPILATION_KEYWORDS = [
     "รวมเพลง", "playlist", "อัลบั้ม", "album", "mixtape", "compilation",
     "รวมฮิต", "best of", "greatest hits", "non-stop", "nonstop", "mix",
@@ -61,7 +59,6 @@ function fmtDuration(secs) {
     return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-// ค้นหา YouTube
 async function searchYouTube(query) {
     try {
         const searchRes = await axios.get('https://www.googleapis.com/youtube/v3/search', {
@@ -104,20 +101,22 @@ function parseISODuration(iso) {
     return (parseInt(m[1] || 0) * 3600) + (parseInt(m[2] || 0) * 60) + parseInt(m[3] || 0);
 }
 
-// ★★★ ดาวน์โหลดเสียงเป็น MP3 โดยตรง ★★★
+// ★★★ ดาวน์โหลดเสียงด้วย play-dl ★★★
 async function downloadAudio(videoId) {
     const tempPath = path.join('/tmp', `${videoId}.mp3`);
+    const url = `https://www.youtube.com/watch?v=${videoId}`;
+    
+    const stream = await playdl.stream(url, { quality: 2 });
+    const writeStream = fs.createWriteStream(tempPath);
+    
     return new Promise((resolve, reject) => {
-        const stream = ytdl(videoId, { filter: 'audioonly', quality: 'highestaudio' });
-        const writeStream = fs.createWriteStream(tempPath);
-        stream.pipe(writeStream);
+        stream.stream.pipe(writeStream);
         writeStream.on('finish', () => resolve(tempPath));
         writeStream.on('error', reject);
-        stream.on('error', reject);
+        stream.stream.on('error', reject);
     });
 }
 
-// ★★★ อัปโหลดขึ้น Roblox ★★★
 async function uploadToRoblox(filePath, title, artist) {
     if (!ROBLOX_API_KEY || !ROBLOX_USER_ID) {
         return { success: false, error: 'ไม่ได้ตั้งค่า ROBLOX_API_KEY หรือ ROBLOX_USER_ID' };
@@ -154,7 +153,6 @@ async function uploadToRoblox(filePath, title, artist) {
     }
 }
 
-// ★★★ เพิ่มเพลง + ดาวน์โหลด + อัปโหลด Roblox ★★★
 async function processSong(video, interaction = null) {
     if (songs[video.id]) return { status: 'skipped', reason: 'มีอยู่ในระบบแล้ว' };
     if (isBanned(video.title, video.artist)) return { status: 'banned' };
@@ -162,7 +160,6 @@ async function processSong(video, interaction = null) {
     if (video.duration > 900) return { status: 'skipped', reason: 'ยาวเกิน 15 นาที' };
 
     try {
-        // แจ้งว่ากำลังดาวน์โหลด
         if (interaction) {
             await interaction.editReply({
                 embeds: [new EmbedBuilder()
@@ -174,10 +171,8 @@ async function processSong(video, interaction = null) {
             });
         }
 
-        // ดาวน์โหลด MP3
         const audioPath = await downloadAudio(video.id);
 
-        // แจ้งว่ากำลังอัปโหลด Roblox
         if (interaction) {
             await interaction.editReply({
                 embeds: [new EmbedBuilder()
@@ -189,17 +184,14 @@ async function processSong(video, interaction = null) {
             });
         }
 
-        // อัปโหลด Roblox
         const uploadResult = await uploadToRoblox(audioPath, video.title, video.artist);
 
-        // บันทึก
         songs[video.id] = {
             ...video,
             robloxAssetId: uploadResult.success ? uploadResult.assetId : null,
             robloxError: uploadResult.success ? null : uploadResult.error
         };
 
-        // ลบไฟล์ชั่วคราว
         try { fs.unlinkSync(audioPath); } catch (e) {}
 
         await refreshMessage();
@@ -210,7 +202,6 @@ async function processSong(video, interaction = null) {
     }
 }
 
-// ★★★ เพิ่มเพลงแบบค้นหาชื่อ ★★★
 async function addSongFromYouTube(query, interaction = null) {
     const items = await searchYouTube(query);
     if (!items || items.length === 0) return { status: 'failed', reason: 'ไม่พบผลลัพธ์' };
@@ -220,10 +211,9 @@ async function addSongFromYouTube(query, interaction = null) {
         if (result.status === 'success') return result;
         if (result.status === 'failed') return result;
     }
-    return { status: 'skipped', reason: 'ทุกเพลงที่เจอซ้ำ/ถูกข้าม/อัปโหลดไม่สำเร็จ' };
+    return { status: 'skipped', reason: 'ทุกเพลงที่เจอซ้ำ/ถูกข้าม' };
 }
 
-// ★★★ Real-time Update ★★★
 async function refreshMessage() {
     if (!songChannelId) return;
     const channel = client.channels.cache.get(songChannelId);
@@ -247,7 +237,7 @@ async function refreshMessage() {
         return;
     }
 
-    const chunk = songList.slice(0, 10); // แสดงแค่ 10 เพลงแรก
+    const chunk = songList.slice(0, 10);
     const embed = new EmbedBuilder()
         .setTitle('🎤 รายการเพลง Karaoke')
         .setColor(0x000000)
@@ -277,7 +267,6 @@ function startAutoRefresh() {
     refreshTask = setInterval(async () => { if (songChannelId) await refreshMessage(); }, 30000);
 }
 
-// ★★★ ระบบ Auto หาเพลง ★★★
 async function runAutoSearch(channel) {
     try {
         const searchMsg = await channel.send({
@@ -330,7 +319,7 @@ client.once('ready', async () => {
     const commands = [
         new SlashCommandBuilder().setName('ตั้งค่า').setDescription('ตั้งค่าช่องแสดงเพลง').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
         new SlashCommandBuilder().setName('หาเพลง').setDescription('ค้นหา+อัปโหลด Roblox').addStringOption(o => o.setName('ชื่อเพลง').setDescription('ชื่อเพลง/ศิลปิน').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-        new SlashCommandBuilder().setName('ศิลปิน').setDescription('ดึงเพลงศิลปิน+อัปโหลด Roblox').addStringOption(o => o.setName('ชื่อศิลปิน').setDescription('ชื่อศิลปิน').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+        new SlashCommandBuilder().setName('ศิลปิน').setDescription('ดึงเพลงศิลปิน+อัปโหลด').addStringOption(o => o.setName('ชื่อศิลปิน').setDescription('ชื่อศิลปิน').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
         new SlashCommandBuilder().setName('เพลงฮิต').setDescription('ดึงเพลงฮิต+อัปโหลด').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
         new SlashCommandBuilder().setName('เริ่มหาเพลง').setDescription('เริ่ม Auto').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
         new SlashCommandBuilder().setName('หยุดหาเพลง').setDescription('หยุด Auto').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
@@ -353,7 +342,7 @@ client.on('interactionCreate', async interaction => {
 
     if (commandName === 'ตั้งค่า') {
         songChannelId = interaction.channelId;
-        await interaction.reply({ embeds: [replyEmbed.setDescription('✅ ตั้งค่าช่องเพลงแล้ว! อัปเดตทุก 30 วิ')] });
+        await interaction.reply({ embeds: [replyEmbed.setDescription('✅ ตั้งค่าช่องเพลงแล้ว!')] });
         await refreshMessage();
     }
 
@@ -362,7 +351,7 @@ client.on('interactionCreate', async interaction => {
         const result = await addSongFromYouTube(options.getString('ชื่อเพลง'), interaction);
         const r = songs[Object.keys(songs).pop()];
         if (result.status === 'success') {
-            const robloxInfo = result.uploadResult.success ? `✅ อัปโหลด Roblox สำเร็จ (ID: ${result.uploadResult.assetId})` : `❌ Roblox Error: ${result.uploadResult.error}`;
+            const robloxInfo = result.uploadResult.success ? `✅ Roblox ID: ${result.uploadResult.assetId}` : `❌ ${result.uploadResult.error}`;
             await interaction.editReply({
                 embeds: [replyEmbed.setTitle('✅ สำเร็จ!').setThumbnail(r.thumbnail).addFields(
                     { name: '🎵 เพลง', value: r.title, inline: true },
@@ -413,7 +402,7 @@ client.on('interactionCreate', async interaction => {
 
     if (commandName === 'เริ่มหาเพลง') {
         if (autoTask) { await interaction.reply({ embeds: [replyEmbed.setDescription('⚠️ ทำงานอยู่แล้ว!')] }); return; }
-        await interaction.reply({ embeds: [replyEmbed.setDescription('🚀 เริ่มระบบอัตโนมัติ! จะหาเพลง+อัปโหลด Roblox ทุก 60 วิ')] });
+        await interaction.reply({ embeds: [replyEmbed.setDescription('🚀 เริ่มระบบอัตโนมัติ!')] });
         await runAutoSearch(interaction.channel);
         autoTask = setInterval(async () => {
             const ch = client.channels.cache.get(interaction.channelId);
