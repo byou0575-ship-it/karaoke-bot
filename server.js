@@ -1,7 +1,7 @@
 const { Client, GatewayIntentBits, EmbedBuilder, SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 const express = require('express');
 const axios = require('axios');
-const playdl = require('play-dl');
+const ytdl = require('@distube/ytdl-core');
 const FormData = require('form-data');
 const fs = require('fs');
 const path = require('path');
@@ -24,57 +24,21 @@ let autoTask = null;
 let songChannelId = null;
 let refreshTask = null;
 
-// ★★★ แปลง Netscape Cookies เป็น String ★★★
-function parseNetscapeCookies(filePath) {
-    if (!fs.existsSync(filePath)) return null;
-    try {
-        const content = fs.readFileSync(filePath, 'utf8');
-        const lines = content.split('\n');
-        const cookies = [];
-        
-        for (const line of lines) {
-            // ข้าม comment และบรรทัดว่าง
-            if (line.startsWith('#') || line.trim() === '') continue;
-            
-            // แยกด้วย tab
-            const parts = line.split('\t');
-            if (parts.length >= 7) {
-                const name = parts[5].trim();
-                const value = parts[6].trim();
-                if (name && value) {
-                    cookies.push(`${name}=${value}`);
-                }
-            }
-        }
-        
-        const cookieString = cookies.join('; ');
-        console.log(`✅ Parsed ${cookies.length} cookies from cookies.txt`);
-        return cookieString;
-    } catch (err) {
-        console.error('❌ Failed to parse cookies:', err.message);
-        return null;
-    }
-}
-
-// ตั้งค่า Cookies
+// ★★★ โหลด Cookies ให้ ytdl-core ★★★
 const cookiesPath = path.join(__dirname, 'cookies.txt');
-let cookiesLoaded = false;
-const cookieString = parseNetscapeCookies(cookiesPath);
+let agent = null;
 
-if (cookieString) {
+if (fs.existsSync(cookiesPath)) {
     try {
-        playdl.setToken({
-            youtube: {
-                cookie: cookieString
-            }
-        });
-        cookiesLoaded = true;
-        console.log('✅ Cookies loaded successfully!');
+        const cookieString = fs.readFileSync(cookiesPath, 'utf8');
+        agent = ytdl.createAgent(ytdl.parseCookies ? ytdl.parseCookies(cookieString) : cookieString);
+        console.log('✅ Cookies loaded for ytdl-core');
     } catch (err) {
-        console.error('❌ Failed to set cookies:', err.message);
+        console.error('❌ Failed to load cookies:', err.message);
+        agent = null;
     }
 } else {
-    console.log('⚠️ cookies.txt not found or empty.');
+    console.log('⚠️ cookies.txt not found. Bot may fail.');
 }
 
 const COMPILATION_KEYWORDS = [
@@ -154,19 +118,25 @@ function parseISODuration(iso) {
     return (parseInt(m[1] || 0) * 3600) + (parseInt(m[2] || 0) * 60) + parseInt(m[3] || 0);
 }
 
-// ★★★ ดาวน์โหลดเสียงด้วย play-dl + Cookies ★★★
+// ★★★ ดาวน์โหลดเสียงด้วย ytdl-core ★★★
 async function downloadAudio(videoId) {
     const tempPath = path.join('/tmp', `${videoId}.mp3`);
     const url = `https://www.youtube.com/watch?v=${videoId}`;
-    
-    const stream = await playdl.stream(url, { quality: 2 });
+
+    const options = {
+        quality: 'highestaudio',
+        filter: 'audioonly'
+    };
+    if (agent) options.agent = agent;
+
+    const stream = ytdl(url, options);
     const writeStream = fs.createWriteStream(tempPath);
-    
+
     return new Promise((resolve, reject) => {
-        stream.stream.pipe(writeStream);
+        stream.pipe(writeStream);
         writeStream.on('finish', () => resolve(tempPath));
         writeStream.on('error', reject);
-        stream.stream.on('error', reject);
+        stream.on('error', reject);
     });
 }
 
@@ -367,7 +337,6 @@ async function runAutoSearch(channel) {
 
 client.once('ready', async () => {
     console.log(`Logged in as ${client.user.tag}!`);
-    if (cookiesLoaded) console.log('✅ Cookies are active for play-dl');
     startAutoRefresh();
 
     const commands = [
