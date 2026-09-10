@@ -62,7 +62,6 @@ function isBanned(title, artist) {
     return false;
 }
 
-// ★★★ ค้นหาเพลง ★★★
 async function searchJoox(query) {
     try {
         console.log(`🔍 Searching: ${query}`);
@@ -81,38 +80,12 @@ async function searchJoox(query) {
     }
 }
 
-// ★★★ ดึง URL ดาวน์โหลดจริงจาก Stream Endpoint ★★★
-async function getStreamUrl(songId, source = 'joox') {
-    try {
-        console.log(`🎵 Getting stream URL for: ${songId}`);
-        const response = await axios.get(`${MUSIC_API_URL}/api/v1/music/stream`, {
-            params: { id: songId, source: source },
-            timeout: 60000,
-            maxRedirects: 5
-        });
-        
-        // ลองหลาย field ที่เป็นไปได้
-        const data = response.data;
-        console.log(`📥 Stream response:`, JSON.stringify(data).slice(0, 200));
-        
-        // API อาจส่ง url มาตรงๆ หรืออยู่ใน data
-        if (data.url) return data.url;
-        if (data.data && data.data.url) return data.data.url;
-        if (data.data && data.data.stream_url) return data.data.stream_url;
-        if (data.link) return data.link;
-        
-        // ถ้าเป็น binary/audio โดยตรง ให้ใช้ URL ของ API เอง
-        return `${MUSIC_API_URL}/api/v1/music/stream?id=${encodeURIComponent(songId)}&source=${source}`;
-    } catch (error) {
-        console.error('❌ Stream URL error:', error.message);
-        return null;
-    }
-}
-
-// ★★★ ดาวน์โหลด MP3 ★★★
-async function downloadAudio(downloadUrl) {
+// ★★★ ดาวน์โหลด MP3 จาก Stream Endpoint โดยตรง (Stream Endpoint เป็น Proxy) ★★★
+async function downloadAudio(songId, source = 'joox') {
     const tempPath = path.join('/tmp', `audio_${Date.now()}.mp3`);
-    console.log(`⬇️ Downloading from: ${downloadUrl.slice(0, 100)}...`);
+    const downloadUrl = `${MUSIC_API_URL}/api/v1/music/stream?id=${encodeURIComponent(songId)}&source=${source}`;
+    
+    console.log(`⬇️ Downloading from: ${downloadUrl.slice(0, 120)}...`);
     
     const response = await axios.get(downloadUrl, {
         responseType: 'stream',
@@ -125,19 +98,25 @@ async function downloadAudio(downloadUrl) {
         }
     });
     
+    console.log(`📥 Content-Type: ${response.headers['content-type']}`);
+    console.log(`📥 Content-Length: ${response.headers['content-length'] || 'unknown'}`);
+    
     const writer = fs.createWriteStream(tempPath);
     response.data.pipe(writer);
     return new Promise((resolve, reject) => {
         writer.on('finish', () => {
             const size = fs.statSync(tempPath).size;
             console.log(`✅ Downloaded ${(size / 1024).toFixed(1)} KB`);
+            if (size < 1000) {
+                reject(new Error(`ไฟล์เล็กเกินไป (${size} bytes) - อาจไม่ใช่ไฟล์เสียง`));
+                return;
+            }
             resolve(tempPath);
         });
         writer.on('error', reject);
     });
 }
 
-// ★★★ อัปโหลดขึ้น Roblox ★★★
 async function uploadToRoblox(filePath, title, artist) {
     if (!ROBLOX_API_KEY || !ROBLOX_USER_ID) {
         return { success: false, error: 'ไม่ได้ตั้งค่า ROBLOX_API_KEY' };
@@ -171,7 +150,6 @@ async function uploadToRoblox(filePath, title, artist) {
     }
 }
 
-// ★★★ ประมวลผลเพลง ★★★
 async function processSong(song, interaction = null, index = 0, total = 1) {
     const songId = song.id;
     const title = song.name || 'Unknown';
@@ -189,25 +167,6 @@ async function processSong(song, interaction = null, index = 0, total = 1) {
     }
 
     try {
-        // Step 1: ขอ Stream URL
-        if (interaction) {
-            await interaction.editReply({
-                embeds: [new EmbedBuilder()
-                    .setTitle(`⏳ เพลงที่ ${index + 1}/${total} - กำลังขอ Stream URL...`)
-                    .setDescription(`🎵 **${title}**\n🎤 ${artist}`)
-                    .setColor(0xf1c40f)
-                    .setThumbnail(song.cover || null)
-                ]
-            });
-        }
-
-        const streamUrl = await getStreamUrl(songId);
-        if (!streamUrl) {
-            console.log(`⏭️ Skip: ขอ Stream URL ไม่ได้`);
-            return { status: 'failed', reason: 'ขอ Stream URL ไม่ได้' };
-        }
-
-        // Step 2: ดาวน์โหลด
         if (interaction) {
             await interaction.editReply({
                 embeds: [new EmbedBuilder()
@@ -219,9 +178,8 @@ async function processSong(song, interaction = null, index = 0, total = 1) {
             });
         }
 
-        const audioPath = await downloadAudio(streamUrl);
+        const audioPath = await downloadAudio(songId, 'joox');
 
-        // Step 3: อัปโหลด Roblox
         if (interaction) {
             await interaction.editReply({
                 embeds: [new EmbedBuilder()
@@ -308,10 +266,7 @@ function startAutoRefresh() {
 async function runAutoSearch(channel) {
     try {
         const searchMsg = await channel.send({
-            embeds: [new EmbedBuilder()
-                .setTitle('🔍 ระบบอัตโนมัติกำลังหาเพลง...')
-                .setColor(0xf1c40f)
-            ]
+            embeds: [new EmbedBuilder().setTitle('🔍 ระบบอัตโนมัติกำลังหาเพลง...').setColor(0xf1c40f)]
         });
         const results = await searchJoox('เพลงไทย');
         if (results.length === 0) {
@@ -376,12 +331,12 @@ client.on('interactionCreate', async interaction => {
             const songsList = res.data?.data?.songs || [];
             await interaction.editReply({
                 embeds: [replyEmbed.setTitle('🧪 ทดสอบ JOOX API')
-                    .setDescription(`**URL:** \`${MUSIC_API_URL}\`\n**สถานะ:** ✅ เชื่อมต่อได้\n**Code:** ${res.data.code}\n**จำนวนเพลง:** ${songsList.length}`)
+                    .setDescription(`**URL:** \`${MUSIC_API_URL}\`\n**สถานะ:** ✅ เชื่อมต่อได้\n**จำนวนเพลง:** ${songsList.length}`)
                     .setColor(0x57F287)
                 ]
             });
         } catch (error) {
-            await interaction.editReply({ embeds: [replyEmbed.setTitle('🧪 ทดสอบ JOOX API').setDescription(`❌ ${error.message}`).setColor(0xe74c3c)] });
+            await interaction.editReply({ embeds: [replyEmbed.setTitle('🧪 ทดสอบ').setDescription(`❌ ${error.message}`).setColor(0xe74c3c)] });
         }
     }
 
