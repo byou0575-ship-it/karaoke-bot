@@ -1,11 +1,7 @@
 // ╔══════════════════════════════════════════════════════════════════════════╗
-// ║   KARAOKE BOT ULTIMATE v10.0 - 10-LAYER FALLBACK EDITION                ║
-// ║   ✨ 10-Layer Download · Anti-Rate-Limit · Multi-Channel · Auto-Clean   ║
+// ║   KARAOKE BOT v12.0 - FULL DISPLAY EDITION                               ║
+// ║   ✨ Show All Songs · Auto Delete Old · Simple Search · 3-Layer Fallback║
 // ╚══════════════════════════════════════════════════════════════════════════╝
-
-// ═══════════════════════════════════════════════════════════════════════════
-// [SECTION 01] - IMPORTS
-// ═══════════════════════════════════════════════════════════════════════════
 
 const {
     Client, GatewayIntentBits, EmbedBuilder, SlashCommandBuilder,
@@ -21,7 +17,7 @@ const crypto = require('crypto');
 require('dotenv').config();
 
 // ═══════════════════════════════════════════════════════════════════════════
-// [SECTION 02] - CONFIGURATION
+// [SECTION 01] - CONFIG
 // ═══════════════════════════════════════════════════════════════════════════
 
 const CONFIG = {
@@ -34,21 +30,17 @@ const CONFIG = {
     JSONBIN_ID: process.env.JSONBIN_ID,
     JSONBIN_KEY: process.env.JSONBIN_KEY,
     JSONBIN_URL: 'https://api.jsonbin.io/v3/b',
-    HTTP_TIMEOUT: 120000,
-    DOWNLOAD_TIMEOUT: 180000,
+    HTTP_TIMEOUT: 180000,
     UPLOAD_TIMEOUT: 180000,
     MAX_FILE_SIZE: 20 * 1024 * 1024,
-    SONGS_PER_PAGE: 8,
+    SONGS_PER_MSG: 15, // ★ แสดง 15 เพลงต่อ 1 ข้อความ
     RATE_LIMIT_MS: 3000,
     UNLOCK_RATE_MS: 10000,
     AUTO_SEARCH_INTERVAL: 90000,
-    AUTO_UPDATE_INTERVAL: 15000,
+    AUTO_UPDATE_INTERVAL: 20000,
     AUTO_CLEANUP_INTERVAL: 600000,
     SEARCH_DELETE_TIMEOUT: 15000,
     MAX_SONGS_TO_TRY: 30,
-    THROTTLE_PER_SEC: 3, // ★ Request Throttle
-    // ★ 10 Sources สำหรับ Layer 4-9
-    MULTI_SOURCES: ['youtube', 'netease', 'kuwo', 'migu', 'qq', 'kugou'],
     SEARCH_QUERIES: [
         'เพลงไทย', 'เพลงใหม่', 'เพลงฮิต', 'ลูกทุ่ง', 'หมอลำ',
         'เพลงรัก', 'เพลงเศร้า', 'เพลงสากล', 'Thai pop', 'Thai rock',
@@ -60,23 +52,13 @@ const CONFIG = {
     COLOR: {
         PRIMARY: 0x5865F2, SUCCESS: 0x57F287, WARNING: 0xFEE75C,
         ERROR: 0xED4245, INFO: 0x3498DB, BLACK: 0x000000,
-        GOLD: 0xF1C40F, PINK: 0xEB459E, PURPLE: 0x9B59B6, TEAL: 0x1ABC9C
+        GOLD: 0xF1C40F, PINK: 0xEB459E, PURPLE: 0x9B59B6
     }
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-// [SECTION 03] - ASSETS
-// ═══════════════════════════════════════════════════════════════════════════
-
 const ASSETS = {
-    LOADING: 'https://media.tenor.com/On7kvXhzml4AAAAj/loading-gif.gif',
     SUCCESS: 'https://media.tenor.com/8B6m6cZvB5sAAAAC/success.gif',
     MUSIC: 'https://media.tenor.com/XfN7hy_IYWYAAAAC/music.gif',
-    KARAOKE: 'https://media.tenor.com/6wL6Zm3cJuIAAAAC/singing.gif',
-    DOWNLOAD: 'https://media.tenor.com/KGzZlT5Uu2QAAAAC/download.gif',
-    UPLOAD: 'https://media.tenor.com/qKz5v9rUYWYAAAAC/upload.gif',
-    DANCING: 'https://media.tenor.com/XQeY7_wKPYwAAAAC/dance.gif',
-    MUSIC_NOTES: 'https://media.tenor.com/1Q9hN8kNZ8AAAAAC/music-notes.gif',
     SEARCH: 'https://media.tenor.com/Qg5RJ6wGdpEAAAAC/search.gif',
     LIBRARY: 'https://media.tenor.com/qP3S7gXsV3sAAAAC/library.gif',
     FIRE: 'https://media.tenor.com/2roX3uxz_68AAAAC/fire.gif',
@@ -86,11 +68,11 @@ const ASSETS = {
     WARNING: 'https://media.tenor.com/Og5bYvHEB2wAAAAC/warning.gif',
     ROCKET: 'https://media.tenor.com/xGvJCRXtL5IAAAAC/rocket.gif',
     BROOM: 'https://media.tenor.com/6zV3LTFQ8VUAAAAC/broom.gif',
-    SHIELD: 'https://media.tenor.com/1XtjXBVdY1AAAAAC/shield.gif'
+    UPLOAD: 'https://media.tenor.com/qKz5v9rUYWYAAAAC/upload.gif'
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
-// [SECTION 04] - GLOBAL STATE
+// [SECTION 02] - GLOBAL STATE
 // ═══════════════════════════════════════════════════════════════════════════
 
 let songs = {};
@@ -106,31 +88,28 @@ let cleanupTask = null;
 let unlockAttempts = new Map();
 let commandCooldowns = new Map();
 
+// ★ เก็บ message IDs ที่ bot ส่งไว้ในแต่ละช่อง เพื่อลบทีหลัง
 let postedMessages = {
-    display: {}, library: [], search: null, autoProgress: null
+    display: {}, // { channelId: [messageIds] }
+    library: [], // [messageIds]
+    search: null // messageId
 };
 
 let lastLibraryHash = '';
 let lastDisplayHashes = {};
 let searchQueryIndex = 0;
 let lastSaveHash = '';
-let saveCount = 0;
 
 let stats = {
     totalSearches: 0, totalDownloads: 0, totalUploads: 0, totalFailures: 0,
     totalSongsAdded: 0, totalSongsRemoved: 0, totalSearchesByUser: 0,
     totalUpdates: 0, totalSkipped: 0, totalCleaned: 0, totalDuplicatesRemoved: 0,
-    // ★ 10-Layer Stats
-    layer1Success: 0, layer2Success: 0, layer3Success: 0, layer4Success: 0,
-    layer5Success: 0, layer6Success: 0, layer7Success: 0, layer8Success: 0,
-    layer9Success: 0, layer10Success: 0,
-    rateLimitHits: 0, totalRetries: 0,
-    startTime: Date.now(), lastAutoSearch: null, lastCleanup: null,
-    autoSearchCount: 0, cleanupCount: 0
+    layer1Success: 0, layer2Success: 0, layer3Success: 0,
+    startTime: Date.now(), autoSearchCount: 0, cleanupCount: 0
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
-// [SECTION 05] - EXPRESS SERVER
+// [SECTION 03] - EXPRESS
 // ═══════════════════════════════════════════════════════════════════════════
 
 const app = express();
@@ -142,24 +121,16 @@ app.get('/', (req, res) => {
         bot: client.user ? client.user.tag : 'offline',
         locked: isLocked,
         songs: Object.keys(songs).length,
-        layerStats: {
-            L1: stats.layer1Success, L2: stats.layer2Success,
-            L3: stats.layer3Success, L4: stats.layer4Success,
-            L5: stats.layer5Success, L6: stats.layer6Success,
-            L7: stats.layer7Success, L8: stats.layer8Success,
-            L9: stats.layer9Success, L10: stats.layer10Success
-        },
         uptime: Math.floor((Date.now() - stats.startTime) / 1000)
     });
 });
-
 app.get('/health', (req, res) => res.status(200).json({ status: 'ok' }));
 
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log(`✅ Web server running on port ${PORT}`));
 
 // ═══════════════════════════════════════════════════════════════════════════
-// [SECTION 06] - DISCORD CLIENT
+// [SECTION 04] - DISCORD CLIENT
 // ═══════════════════════════════════════════════════════════════════════════
 
 const client = new Client({
@@ -167,7 +138,7 @@ const client = new Client({
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// [SECTION 07] - STORAGE (Smart Save)
+// [SECTION 05] - STORAGE
 // ═══════════════════════════════════════════════════════════════════════════
 
 const LOCAL_BACKUP = '/tmp/backup.json';
@@ -212,7 +183,6 @@ async function saveToCloud(force = false) {
             { headers: { 'Content-Type': 'application/json', 'X-Master-Key': CONFIG.JSONBIN_KEY }, timeout: 30000 });
         
         lastSaveHash = currentHash;
-        saveCount++;
         saveToLocal();
     } catch (e) {
         console.error('❌ Save error:', e.message);
@@ -251,83 +221,7 @@ function startAutoSave() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// [SECTION 08] - THROTTLE + SMART AXIOS (Anti-Rate-Limit)
-// ═══════════════════════════════════════════════════════════════════════════
-
-class RequestThrottle {
-    constructor(maxPerSecond = 3) {
-        this.maxPerSecond = maxPerSecond;
-        this.timestamps = [];
-        this.queue = [];
-        this.processing = false;
-    }
-    
-    async wait() {
-        return new Promise((resolve) => {
-            this.queue.push(resolve);
-            this.process();
-        });
-    }
-    
-    async process() {
-        if (this.processing) return;
-        this.processing = true;
-        
-        while (this.queue.length > 0) {
-            const now = Date.now();
-            this.timestamps = this.timestamps.filter(t => now - t < 1000);
-            
-            if (this.timestamps.length < this.maxPerSecond) {
-                this.timestamps.push(now);
-                const resolve = this.queue.shift();
-                resolve();
-            } else {
-                await sleep(100);
-            }
-        }
-        this.processing = false;
-    }
-}
-
-const throttle = new RequestThrottle(CONFIG.THROTTLE_PER_SEC);
-
-async function smartAxiosGet(url, options = {}, retries = 2) {
-    const delays = [1500, 3000, 6000];
-    
-    for (let i = 0; i <= retries; i++) {
-        try {
-            await throttle.wait();
-            const response = await axios.get(url, {
-                ...options,
-                timeout: options.timeout || 60000,
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                    ...options.headers
-                }
-            });
-            return response;
-        } catch (e) {
-            const status = e.response?.status;
-            stats.totalRetries++;
-            
-            if (status === 429) {
-                stats.rateLimitHits++;
-                console.log(`⚠️ Rate limit (429) รอ ${delays[i]/1000}s...`);
-                await sleep(delays[i]);
-                continue;
-            }
-            if (i < retries) {
-                await sleep(delays[i] || 1000);
-                continue;
-            }
-            throw e;
-        }
-    }
-    throw new Error('All retries failed');
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// [SECTION 09] - SECURITY
+// [SECTION 06] - SECURITY
 // ═══════════════════════════════════════════════════════════════════════════
 
 function verifyKey(input) { return input === CONFIG.UNLOCK_KEY; }
@@ -362,7 +256,7 @@ function checkAccess(interaction) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// [SECTION 10] - CONTENT FILTER
+// [SECTION 07] - CONTENT FILTER
 // ═══════════════════════════════════════════════════════════════════════════
 
 const BANNED_WORDS = [
@@ -379,7 +273,7 @@ function isBanned(title, artist) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// [SECTION 11] - UTILITIES
+// [SECTION 08] - UTILITIES
 // ═══════════════════════════════════════════════════════════════════════════
 
 function fmtDuration(secs) {
@@ -388,9 +282,7 @@ function fmtDuration(secs) {
     const s = secs % 60;
     return `${m}:${s.toString().padStart(2, '0')}`;
 }
-
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-
 function fmtUptime(ms) {
     const s = Math.floor(ms / 1000);
     const d = Math.floor(s / 86400);
@@ -401,29 +293,22 @@ function fmtUptime(ms) {
     if (m > 0) return `${m}นาที`;
     return `${s} วินาที`;
 }
-
 function progressBar(current, total, length = 20) {
     if (total === 0) return `\`[${'░'.repeat(length)}]\` **0%**`;
     const pct = Math.min(Math.round((current / total) * 100), 100);
     const filled = Math.round((pct / 100) * length);
     return `\`[${'█'.repeat(filled)}${'░'.repeat(length - filled)}]\` **${pct}%**`;
 }
-
 function truncate(str, len = 50) {
     if (!str) return 'Unknown';
     return str.length > len ? str.slice(0, len - 3) + '...' : str;
 }
-
 function searchSongs(query) {
     const lower = query.toLowerCase();
     return Object.values(songs).filter(s =>
         s.title.toLowerCase().includes(lower) || s.artist.toLowerCase().includes(lower));
 }
-
-function simpleHash(str) {
-    return crypto.createHash('md5').update(str).digest('hex');
-}
-
+function simpleHash(str) { return crypto.createHash('md5').update(str).digest('hex'); }
 function shuffleArray(arr) {
     const a = [...arr];
     for (let i = a.length - 1; i > 0; i--) {
@@ -432,7 +317,6 @@ function shuffleArray(arr) {
     }
     return a;
 }
-
 function getNextSearchQuery() {
     const q = CONFIG.SEARCH_QUERIES[searchQueryIndex];
     searchQueryIndex = (searchQueryIndex + 1) % CONFIG.SEARCH_QUERIES.length;
@@ -440,15 +324,16 @@ function getNextSearchQuery() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// [SECTION 12] - MUSIC API (Search)
+// [SECTION 09] - JOOX API
 // ═══════════════════════════════════════════════════════════════════════════
 
 async function searchJoox(query) {
     try {
         stats.totalSearches++;
-        const res = await smartAxiosGet(`${CONFIG.MUSIC_API_URL}/api/v1/music/search`, {
-            params: { q: query, type: 'song', sources: 'joox' }, timeout: 90000
-        }, 2);
+        const res = await axios.get(`${CONFIG.MUSIC_API_URL}/api/v1/music/search`, {
+            params: { q: query, type: 'song', sources: 'joox' },
+            timeout: 90000
+        });
         return res.data?.data?.songs || [];
     } catch (e) {
         console.error(`Search error: ${e.message}`);
@@ -459,12 +344,10 @@ async function searchJoox(query) {
 async function searchMultipleQueries(count = 3) {
     const allSongs = [];
     const seenIds = new Set();
-    
     for (let i = 0; i < count; i++) {
         const query = getNextSearchQuery();
         console.log(`🔍 Query [${i+1}/${count}]: "${query}"`);
         const results = await searchJoox(query);
-        
         for (const song of results) {
             if (!seenIds.has(song.id)) {
                 seenIds.add(song.id);
@@ -476,39 +359,12 @@ async function searchMultipleQueries(count = 3) {
     return shuffleArray(allSongs);
 }
 
-async function searchOtherSource(query, source) {
-    try {
-        const res = await smartAxiosGet(`${CONFIG.MUSIC_API_URL}/api/v1/music/search`, {
-            params: { q: query, type: 'song', sources: source }, timeout: 60000
-        }, 1);
-        return res.data?.data?.songs || [];
-    } catch (e) { return []; }
-}
-
 // ═══════════════════════════════════════════════════════════════════════════
-// [SECTION 13] - 10-LAYER DOWNLOAD SYSTEM
+// [SECTION 10] - DOWNLOAD (3-Layer Fallback)
 // ═══════════════════════════════════════════════════════════════════════════
 
-// Helper: Stream to File
-async function streamToFile(url, layer, headers = {}) {
+async function writeStreamToFile(stream, layer) {
     const tempPath = path.join('/tmp', `audio_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.mp3`);
-    const res = await axios.get(url, {
-        responseType: 'stream',
-        timeout: CONFIG.DOWNLOAD_TIMEOUT,
-        maxContentLength: Infinity, maxBodyLength: Infinity,
-        headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Accept': 'audio/*,*/*', ...headers
-        }
-    });
-    return await pipeToFile(res.data, layer, tempPath);
-}
-
-// Helper: Pipe to File
-async function pipeToFile(stream, layer, tempPath = null) {
-    if (!tempPath) {
-        tempPath = path.join('/tmp', `audio_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.mp3`);
-    }
     const writer = fs.createWriteStream(tempPath);
     stream.pipe(writer);
     
@@ -516,344 +372,143 @@ async function pipeToFile(stream, layer, tempPath = null) {
         writer.on('finish', resolve);
         writer.on('error', reject);
         stream.on('error', reject);
-        setTimeout(() => reject(new Error('Timeout')), CONFIG.DOWNLOAD_TIMEOUT);
+        setTimeout(() => reject(new Error('Timeout')), CONFIG.HTTP_TIMEOUT);
     });
     
     const size = fs.statSync(tempPath).size;
     if (size < 1024) {
+        console.log(`   ⚠️ [${layer}] ไฟล์เล็กเกินไป (${size} bytes)`);
         try { fs.unlinkSync(tempPath); } catch (e) {}
-        throw new Error(`ไฟล์เล็ก (${size} bytes)`);
+        throw new Error(`ไฟล์เล็กเกินไป`);
     }
-    console.log(`  [${layer}] ✅ ${(size/1024).toFixed(1)} KB`);
+    console.log(`   ✅ [${layer}] สำเร็จ: ${(size / 1024).toFixed(1)} KB`);
     return tempPath;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// ★★★ LAYER 1: DIRECT URL (joox) ★★★
-// ═══════════════════════════════════════════════════════════════════════════
+async function downloadUrlToFile(url, layer, headers = {}) {
+    const res = await axios.get(url, {
+        responseType: 'stream',
+        timeout: CONFIG.HTTP_TIMEOUT,
+        maxContentLength: Infinity, maxBodyLength: Infinity,
+        headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': 'audio/*,*/*',
+            ...headers
+        }
+    });
+    
+    const ct = (res.headers['content-type'] || '').toLowerCase();
+    console.log(`   📥 [${layer}] Content-Type: ${ct}`);
+    
+    if (!ct.includes('audio') && !ct.includes('octet-stream') && !ct.includes('mpeg')) {
+        throw new Error(`Content-Type ไม่ใช่ audio: ${ct}`);
+    }
+    return await writeStreamToFile(res.data, layer);
+}
 
-async function L1_directUrl(songId, source = 'joox') {
+// ชั้น 1: Direct URL
+async function layer1_directUrl(songId, source = 'joox') {
     try {
-        console.log(`  [L1] Direct URL (${source})`);
-        const res = await smartAxiosGet(`${CONFIG.MUSIC_API_URL}/api/v1/music/url`, {
+        console.log(`\n   🎯 [ชั้น 1] Direct URL (${source})...`);
+        const res = await axios.get(`${CONFIG.MUSIC_API_URL}/api/v1/music/url`, {
             params: { id: songId, source }, timeout: 45000
-        }, 1);
-        const url = res.data?.url || res.data?.data?.url || res.data?.link;
-        if (!url) return null;
-        return await streamToFile(url, 'L1', { 'Referer': 'https://www.joox.com/' });
+        });
+        const directUrl = res.data?.url || res.data?.data?.url || res.data?.link;
+        if (!directUrl) { console.log(`   ❌ [ชั้น 1] ไม่มี URL`); return null; }
+        console.log(`   🔗 [ชั้น 1] URL: ${directUrl.slice(0, 80)}...`);
+        return await downloadUrlToFile(directUrl, 'L1', { 'Referer': 'https://www.joox.com/' });
     } catch (e) {
-        console.log(`  [L1] ❌ ${e.message.slice(0, 60)}`);
+        console.log(`   ❌ [ชั้น 1] ล้มเหลว: ${e.message.slice(0, 80)}`);
         return null;
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// ★★★ LAYER 2: STREAM PROXY (joox) ★★★
-// ═══════════════════════════════════════════════════════════════════════════
-
-async function L2_streamProxy(songId, source = 'joox') {
+// ชั้น 2: Stream Proxy
+async function layer2_streamProxy(songId, source = 'joox') {
     try {
-        console.log(`  [L2] Stream Proxy (${source})`);
-        const url = `${CONFIG.MUSIC_API_URL}/api/v1/music/stream?id=${encodeURIComponent(songId)}&source=${source}`;
-        const res = await axios.get(url, {
-            responseType: 'stream', timeout: CONFIG.DOWNLOAD_TIMEOUT,
+        console.log(`\n   🎯 [ชั้น 2] Stream Proxy (${source})...`);
+        const streamUrl = `${CONFIG.MUSIC_API_URL}/api/v1/music/stream?id=${encodeURIComponent(songId)}&source=${source}`;
+        const res = await axios.get(streamUrl, {
+            responseType: 'stream', timeout: CONFIG.HTTP_TIMEOUT,
             maxContentLength: Infinity, maxBodyLength: Infinity
         });
-        const ct = res.headers['content-type'] || '';
-        if (!ct.includes('audio') && !ct.includes('octet-stream')) return null;
-        return await pipeToFile(res.data, 'L2');
+        const ct = (res.headers['content-type'] || '').toLowerCase();
+        console.log(`   📥 [ชั้น 2] Content-Type: ${ct}`);
+        if (!ct.includes('audio') && !ct.includes('octet-stream') && !ct.includes('mpeg')) {
+            console.log(`   ❌ [ชั้น 2] Content-Type ไม่ใช่ audio`);
+            return null;
+        }
+        return await writeStreamToFile(res.data, 'L2');
     } catch (e) {
-        console.log(`  [L2] ❌ ${e.message.slice(0, 60)}`);
+        console.log(`   ❌ [ชั้น 2] ล้มเหลว: ${e.message.slice(0, 80)}`);
         return null;
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// ★★★ LAYER 3: SWITCH SOURCE ★★★
-// ═══════════════════════════════════════════════════════════════════════════
-
-async function L3_switchSource(songId, songName, artist, source = 'joox') {
+// ชั้น 3: Switch Source
+async function layer3_switchSource(songId, songName, artist, source = 'joox') {
     try {
-        console.log(`  [L3] Switch Source`);
-        const res = await smartAxiosGet(`${CONFIG.MUSIC_API_URL}/api/v1/music/switch`, {
+        console.log(`\n   🎯 [ชั้น 3] Switch Source...`);
+        const res = await axios.get(`${CONFIG.MUSIC_API_URL}/api/v1/music/switch`, {
             params: { id: songId, source, name: songName, artist }, timeout: 60000
-        }, 1);
+        });
         
-        if (res.data?.url) return await streamToFile(res.data.url, 'L3');
-        if (res.data?.data?.url) return await streamToFile(res.data.data.url, 'L3');
+        if (res.data?.url || res.data?.data?.url) {
+            const newUrl = res.data.url || res.data.data.url;
+            return await downloadUrlToFile(newUrl, 'L3-url');
+        }
         
         if (res.data?.id) {
             const newId = res.data.id;
             const newSource = res.data.source || 'joox';
-            const url2 = `${CONFIG.MUSIC_API_URL}/api/v1/music/stream?id=${encodeURIComponent(newId)}&source=${newSource}`;
-            const res2 = await axios.get(url2, {
-                responseType: 'stream', timeout: CONFIG.DOWNLOAD_TIMEOUT,
+            const streamUrl = `${CONFIG.MUSIC_API_URL}/api/v1/music/stream?id=${encodeURIComponent(newId)}&source=${newSource}`;
+            const res2 = await axios.get(streamUrl, {
+                responseType: 'stream', timeout: CONFIG.HTTP_TIMEOUT,
                 maxContentLength: Infinity, maxBodyLength: Infinity
             });
-            const ct = res2.headers['content-type'] || '';
-            if (ct.includes('audio') || ct.includes('octet-stream')) return await pipeToFile(res2.data, 'L3');
+            const ct = (res2.headers['content-type'] || '').toLowerCase();
+            if (ct.includes('audio') || ct.includes('octet-stream') || ct.includes('mpeg')) {
+                return await writeStreamToFile(res2.data, 'L3-stream');
+            }
         }
         return null;
     } catch (e) {
-        console.log(`  [L3] ❌ ${e.message.slice(0, 60)}`);
+        console.log(`   ❌ [ชั้น 3] ล้มเหลว: ${e.message.slice(0, 80)}`);
         return null;
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// ★★★ LAYER 4: YOUTUBE ★★★
-// ═══════════════════════════════════════════════════════════════════════════
-
-async function L4_youtube(songName, artist) {
-    try {
-        console.log(`  [L4] YouTube`);
-        const query = `${songName} ${artist}`.trim();
-        const songs = await searchOtherSource(query, 'youtube');
-        if (songs.length === 0) return null;
-        
-        const target = songs[0];
-        const url = `${CONFIG.MUSIC_API_URL}/api/v1/music/stream?id=${encodeURIComponent(target.id)}&source=youtube`;
-        const res = await axios.get(url, {
-            responseType: 'stream', timeout: CONFIG.DOWNLOAD_TIMEOUT,
-            maxContentLength: Infinity, maxBodyLength: Infinity
-        });
-        const ct = res.headers['content-type'] || '';
-        if (ct.includes('audio') || ct.includes('octet-stream')) return await pipeToFile(res.data, 'L4');
-        return null;
-    } catch (e) {
-        console.log(`  [L4] ❌ ${e.message.slice(0, 60)}`);
-        return null;
-    }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// ★★★ LAYER 5: NETEASE ★★★
-// ═══════════════════════════════════════════════════════════════════════════
-
-async function L5_netease(songName, artist) {
-    try {
-        console.log(`  [L5] Netease`);
-        const query = `${songName} ${artist}`.trim();
-        const songs = await searchOtherSource(query, 'netease');
-        if (songs.length === 0) return null;
-        
-        const target = songs[0];
-        const url = `${CONFIG.MUSIC_API_URL}/api/v1/music/stream?id=${encodeURIComponent(target.id)}&source=netease`;
-        const res = await axios.get(url, {
-            responseType: 'stream', timeout: CONFIG.DOWNLOAD_TIMEOUT,
-            maxContentLength: Infinity, maxBodyLength: Infinity
-        });
-        const ct = res.headers['content-type'] || '';
-        if (ct.includes('audio') || ct.includes('octet-stream')) return await pipeToFile(res.data, 'L5');
-        return null;
-    } catch (e) {
-        console.log(`  [L5] ❌ ${e.message.slice(0, 60)}`);
-        return null;
-    }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// ★★★ LAYER 6: KUWO ★★★
-// ═══════════════════════════════════════════════════════════════════════════
-
-async function L6_kuwo(songName, artist) {
-    try {
-        console.log(`  [L6] Kuwo`);
-        const query = `${songName} ${artist}`.trim();
-        const songs = await searchOtherSource(query, 'kuwo');
-        if (songs.length === 0) return null;
-        
-        const target = songs[0];
-        const url = `${CONFIG.MUSIC_API_URL}/api/v1/music/stream?id=${encodeURIComponent(target.id)}&source=kuwo`;
-        const res = await axios.get(url, {
-            responseType: 'stream', timeout: CONFIG.DOWNLOAD_TIMEOUT,
-            maxContentLength: Infinity, maxBodyLength: Infinity
-        });
-        const ct = res.headers['content-type'] || '';
-        if (ct.includes('audio') || ct.includes('octet-stream')) return await pipeToFile(res.data, 'L6');
-        return null;
-    } catch (e) {
-        console.log(`  [L6] ❌ ${e.message.slice(0, 60)}`);
-        return null;
-    }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// ★★★ LAYER 7: MIGU ★★★
-// ═══════════════════════════════════════════════════════════════════════════
-
-async function L7_migu(songName, artist) {
-    try {
-        console.log(`  [L7] Migu`);
-        const query = `${songName} ${artist}`.trim();
-        const songs = await searchOtherSource(query, 'migu');
-        if (songs.length === 0) return null;
-        
-        const target = songs[0];
-        const url = `${CONFIG.MUSIC_API_URL}/api/v1/music/stream?id=${encodeURIComponent(target.id)}&source=migu`;
-        const res = await axios.get(url, {
-            responseType: 'stream', timeout: CONFIG.DOWNLOAD_TIMEOUT,
-            maxContentLength: Infinity, maxBodyLength: Infinity
-        });
-        const ct = res.headers['content-type'] || '';
-        if (ct.includes('audio') || ct.includes('octet-stream')) return await pipeToFile(res.data, 'L7');
-        return null;
-    } catch (e) {
-        console.log(`  [L7] ❌ ${e.message.slice(0, 60)}`);
-        return null;
-    }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// ★★★ LAYER 8: QQ MUSIC ★★★
-// ═══════════════════════════════════════════════════════════════════════════
-
-async function L8_qq(songName, artist) {
-    try {
-        console.log(`  [L8] QQ Music`);
-        const query = `${songName} ${artist}`.trim();
-        const songs = await searchOtherSource(query, 'qq');
-        if (songs.length === 0) return null;
-        
-        const target = songs[0];
-        const url = `${CONFIG.MUSIC_API_URL}/api/v1/music/stream?id=${encodeURIComponent(target.id)}&source=qq`;
-        const res = await axios.get(url, {
-            responseType: 'stream', timeout: CONFIG.DOWNLOAD_TIMEOUT,
-            maxContentLength: Infinity, maxBodyLength: Infinity
-        });
-        const ct = res.headers['content-type'] || '';
-        if (ct.includes('audio') || ct.includes('octet-stream')) return await pipeToFile(res.data, 'L8');
-        return null;
-    } catch (e) {
-        console.log(`  [L8] ❌ ${e.message.slice(0, 60)}`);
-        return null;
-    }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// ★★★ LAYER 9: KUGOU ★★★
-// ═══════════════════════════════════════════════════════════════════════════
-
-async function L9_kugou(songName, artist) {
-    try {
-        console.log(`  [L9] Kugou`);
-        const query = `${songName} ${artist}`.trim();
-        const songs = await searchOtherSource(query, 'kugou');
-        if (songs.length === 0) return null;
-        
-        const target = songs[0];
-        const url = `${CONFIG.MUSIC_API_URL}/api/v1/music/stream?id=${encodeURIComponent(target.id)}&source=kugou`;
-        const res = await axios.get(url, {
-            responseType: 'stream', timeout: CONFIG.DOWNLOAD_TIMEOUT,
-            maxContentLength: Infinity, maxBodyLength: Infinity
-        });
-        const ct = res.headers['content-type'] || '';
-        if (ct.includes('audio') || ct.includes('octet-stream')) return await pipeToFile(res.data, 'L9');
-        return null;
-    } catch (e) {
-        console.log(`  [L9] ❌ ${e.message.slice(0, 60)}`);
-        return null;
-    }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// ★★★ LAYER 10: EXPONENTIAL BACKOFF RETRY (Last Resort) ★★★
-// ═══════════════════════════════════════════════════════════════════════════
-
-async function L10_backoffRetry(songId, songName, artist, source = 'joox') {
-    const delays = [5000, 10000, 20000]; // 5s, 10s, 20s
-    
-    for (let i = 0; i < delays.length; i++) {
-        console.log(`  [L10] Backoff retry ${i+1}/${delays.length} (รอ ${delays[i]/1000}s)`);
-        await sleep(delays[i]);
-        
-        // ลอง Direct URL ใหม่
-        const r1 = await L1_directUrl(songId, source);
-        if (r1) return r1;
-        
-        // ลอง Stream Proxy ใหม่
-        const r2 = await L2_streamProxy(songId, source);
-        if (r2) return r2;
-    }
-    return null;
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// ★★★ MAIN: DOWNLOAD (10-Layer Fallback) ★★★
-// ═══════════════════════════════════════════════════════════════════════════
-
+// MAIN: downloadAudio
 async function downloadAudio(songId, songName, artist, source = 'joox') {
     console.log(`\n${'━'.repeat(60)}`);
-    console.log(`⬇️ 10-LAYER DOWNLOAD: ${songName} - ${artist}`);
-    console.log(`   ID: ${songId} | Source: ${source}`);
+    console.log(`⬇️ ดาวน์โหลด: ${songName} - ${artist}`);
     console.log(`${'━'.repeat(60)}`);
     
     const startTime = Date.now();
     let result = null;
     
-    // L1: Direct URL
-    result = await L1_directUrl(songId, source);
-    if (result) { stats.layer1Success++; stats.totalDownloads++; console.log(`✅ L1 (${((Date.now()-startTime)/1000).toFixed(1)}s)`); return result; }
-    await sleep(800);
-    
-    // L2: Stream Proxy
-    result = await L2_streamProxy(songId, source);
-    if (result) { stats.layer2Success++; stats.totalDownloads++; console.log(`✅ L2 (${((Date.now()-startTime)/1000).toFixed(1)}s)`); return result; }
-    await sleep(1000);
-    
-    // L3: Switch Source
-    result = await L3_switchSource(songId, songName, artist, source);
-    if (result) { stats.layer3Success++; stats.totalDownloads++; console.log(`✅ L3 (${((Date.now()-startTime)/1000).toFixed(1)}s)`); return result; }
-    await sleep(1200);
-    
-    // L4: YouTube
-    result = await L4_youtube(songName, artist);
-    if (result) { stats.layer4Success++; stats.totalDownloads++; console.log(`✅ L4 (${((Date.now()-startTime)/1000).toFixed(1)}s)`); return result; }
+    result = await layer1_directUrl(songId, source);
+    if (result) { stats.layer1Success++; stats.totalDownloads++; console.log(`✅ สำเร็จด้วยชั้น 1 (${((Date.now()-startTime)/1000).toFixed(1)}s)`); return result; }
     await sleep(1500);
     
-    // L5: Netease
-    result = await L5_netease(songName, artist);
-    if (result) { stats.layer5Success++; stats.totalDownloads++; console.log(`✅ L5 (${((Date.now()-startTime)/1000).toFixed(1)}s)`); return result; }
-    await sleep(1500);
-    
-    // L6: Kuwo
-    result = await L6_kuwo(songName, artist);
-    if (result) { stats.layer6Success++; stats.totalDownloads++; console.log(`✅ L6 (${((Date.now()-startTime)/1000).toFixed(1)}s)`); return result; }
-    await sleep(1500);
-    
-    // L7: Migu
-    result = await L7_migu(songName, artist);
-    if (result) { stats.layer7Success++; stats.totalDownloads++; console.log(`✅ L7 (${((Date.now()-startTime)/1000).toFixed(1)}s)`); return result; }
-    await sleep(1500);
-    
-    // L8: QQ
-    result = await L8_qq(songName, artist);
-    if (result) { stats.layer8Success++; stats.totalDownloads++; console.log(`✅ L8 (${((Date.now()-startTime)/1000).toFixed(1)}s)`); return result; }
-    await sleep(1500);
-    
-    // L9: Kugou
-    result = await L9_kugou(songName, artist);
-    if (result) { stats.layer9Success++; stats.totalDownloads++; console.log(`✅ L9 (${((Date.now()-startTime)/1000).toFixed(1)}s)`); return result; }
+    result = await layer2_streamProxy(songId, source);
+    if (result) { stats.layer2Success++; stats.totalDownloads++; console.log(`✅ สำเร็จด้วยชั้น 2`); return result; }
     await sleep(2000);
     
-    // L10: Exponential Backoff
-    result = await L10_backoffRetry(songId, songName, artist, source);
-    if (result) { stats.layer10Success++; stats.totalDownloads++; console.log(`✅ L10 (${((Date.now()-startTime)/1000).toFixed(1)}s)`); return result; }
+    result = await layer3_switchSource(songId, songName, artist, source);
+    if (result) { stats.layer3Success++; stats.totalDownloads++; console.log(`✅ สำเร็จด้วยชั้น 3`); return result; }
     
-    // ล้มเหลวทุกชั้น
     stats.totalFailures++;
-    console.log(`❌ ทั้ง 10 ชั้นล้มเหลว (${((Date.now()-startTime)/1000).toFixed(1)}s)`);
+    console.log(`❌ ทั้ง 3 ชั้นล้มเหลว`);
     return null;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// [SECTION 14] - ROBLOX UPLOAD
+// [SECTION 11] - ROBLOX UPLOAD
 // ═══════════════════════════════════════════════════════════════════════════
 
 async function uploadToRoblox(filePath, title, artist) {
-    if (!CONFIG.ROBLOX_API_KEY || !CONFIG.ROBLOX_USER_ID) {
-        return { success: false, error: 'ไม่ได้ตั้งค่า ROBLOX' };
-    }
+    if (!CONFIG.ROBLOX_API_KEY || !CONFIG.ROBLOX_USER_ID) return { success: false, error: 'ไม่ได้ตั้งค่า ROBLOX' };
     try {
         const buf = fs.readFileSync(filePath);
         if (buf.length > CONFIG.MAX_FILE_SIZE) return { success: false, error: 'ไฟล์ใหญ่เกิน 20MB' };
@@ -872,10 +527,7 @@ async function uploadToRoblox(filePath, title, artist) {
             maxBodyLength: Infinity, maxContentLength: Infinity, timeout: CONFIG.UPLOAD_TIMEOUT
         });
         
-        if (res.data?.assetId) {
-            stats.totalUploads++;
-            return { success: true, assetId: String(res.data.assetId) };
-        }
+        if (res.data?.assetId) { stats.totalUploads++; return { success: true, assetId: String(res.data.assetId) }; }
         return { success: false, error: JSON.stringify(res.data).slice(0, 200) };
     } catch (e) {
         return { success: false, error: e.response?.data ? JSON.stringify(e.response.data).slice(0, 200) : e.message };
@@ -883,17 +535,15 @@ async function uploadToRoblox(filePath, title, artist) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// [SECTION 15] - CLEANUP
+// [SECTION 12] - CLEANUP
 // ═══════════════════════════════════════════════════════════════════════════
 
 async function cleanupLibrary() {
     try {
         stats.cleanupCount++;
-        stats.lastCleanup = new Date().toISOString();
         const songList = Object.values(songs);
         const beforeCount = songList.length;
         let removedDuplicates = 0, removedInvalid = 0;
-        const removedTitles = [];
         
         const seenKey = new Map();
         for (const song of songList) {
@@ -902,18 +552,10 @@ async function cleanupLibrary() {
                 const existing = seenKey.get(key);
                 const currentTime = new Date(song.addedAt || 0).getTime();
                 const existingTime = new Date(existing.addedAt || 0).getTime();
-                
-                if (currentTime > existingTime) {
-                    delete songs[existing.id];
-                    seenKey.set(key, song);
-                } else {
-                    delete songs[song.id];
-                }
+                if (currentTime > existingTime) { delete songs[existing.id]; seenKey.set(key, song); }
+                else delete songs[song.id];
                 removedDuplicates++;
-                removedTitles.push(`🗑️ ซ้ำ: ${song.title}`);
-            } else {
-                seenKey.set(key, song);
-            }
+            } else seenKey.set(key, song);
         }
         
         for (const song of Object.values(songs)) {
@@ -921,25 +563,17 @@ async function cleanupLibrary() {
             if (!song.id || song.id.length < 5) invalid = true;
             if (!song.title || song.title.trim() === '' || song.title === 'Unknown') invalid = true;
             if (!song.artist || song.artist.trim() === '' || song.artist === 'Unknown') invalid = true;
-            
-            if (invalid) {
-                delete songs[song.id];
-                removedInvalid++;
-                removedTitles.push(`🗑️ ไม่ครบ: ${song.title || song.id}`);
-            }
+            if (invalid) { delete songs[song.id]; removedInvalid++; }
         }
         
         const afterCount = Object.keys(songs).length;
         const removedTotal = beforeCount - afterCount;
         stats.totalCleaned += removedInvalid;
         stats.totalDuplicatesRemoved += removedDuplicates;
-        
         if (removedTotal > 0) await saveToCloud(true);
         
-        return { removed: removedTotal, duplicates: removedDuplicates, invalid: removedInvalid, before: beforeCount, after: afterCount, titles: removedTitles };
-    } catch (e) {
-        return { removed: 0, error: e.message };
-    }
+        return { removed: removedTotal, duplicates: removedDuplicates, invalid: removedInvalid, before: beforeCount, after: afterCount };
+    } catch (e) { return { removed: 0, error: e.message }; }
 }
 
 function startAutoCleanup() {
@@ -951,7 +585,7 @@ function startAutoCleanup() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// [SECTION 16] - PROCESS SONG
+// [SECTION 13] - PROCESS SONG
 // ═══════════════════════════════════════════════════════════════════════════
 
 async function processSong(song, interaction = null, index = 0, total = 1) {
@@ -960,17 +594,11 @@ async function processSong(song, interaction = null, index = 0, total = 1) {
     const artist = song.artist || 'Unknown';
     
     if (songs[songId]) { stats.totalSkipped++; return { status: 'skipped', reason: 'ID ซ้ำ' }; }
-    
     const dupeCheck = Object.values(songs).find(s =>
         s.title.toLowerCase().trim() === title.toLowerCase().trim() &&
         s.artist.toLowerCase().trim() === artist.toLowerCase().trim());
-    
     if (dupeCheck) { stats.totalSkipped++; return { status: 'skipped', reason: 'ชื่อ+ศิลปิน ซ้ำ' }; }
-    
-    if (!title || title === 'Unknown' || !artist || artist === 'Unknown') {
-        stats.totalSkipped++; return { status: 'skipped', reason: 'ข้อมูลไม่ครบ' };
-    }
-    
+    if (!title || title === 'Unknown' || !artist || artist === 'Unknown') { stats.totalSkipped++; return { status: 'skipped', reason: 'ข้อมูลไม่ครบ' }; }
     if (isBanned(title, artist)) { stats.totalSkipped++; return { status: 'banned', reason: 'ถูกคัดกรอง' }; }
     
     try {
@@ -978,7 +606,7 @@ async function processSong(song, interaction = null, index = 0, total = 1) {
             await interaction.editReply({
                 embeds: [new EmbedBuilder()
                     .setTitle(`⬇️ ดาวน์โหลด ${index+1}/${total}`)
-                    .setDescription(`🎵 **${truncate(title, 60)}**\n🎤 ${truncate(artist, 50)}\n\n${progressBar(index, total)}\n\n📊 **สถานะ:** 🛡️ 10-Layer Fallback...`)
+                    .setDescription(`🎵 **${truncate(title, 60)}**\n🎤 ${truncate(artist, 50)}\n\n${progressBar(index, total)}`)
                     .setColor(CONFIG.COLOR.WARNING)
                     .setThumbnail(song.cover || null)
                 ]
@@ -986,13 +614,13 @@ async function processSong(song, interaction = null, index = 0, total = 1) {
         }
         
         const audioPath = await downloadAudio(songId, title, artist, 'joox');
-        if (!audioPath) return { status: 'failed', reason: 'ดาวน์โหลดไม่ได้ (10 ชั้นล้ม)' };
+        if (!audioPath) return { status: 'failed', reason: 'ดาวน์โหลดไม่ได้' };
         
         if (interaction) {
             await interaction.editReply({
                 embeds: [new EmbedBuilder()
                     .setTitle(`⬆️ อัปโหลด ${index+1}/${total}`)
-                    .setDescription(`🎵 **${truncate(title, 60)}**\n🎤 ${truncate(artist, 50)}\n\n${progressBar(index + 0.5, total)}\n\n📊 **สถานะ:** ⬆️ Roblox...`)
+                    .setDescription(`🎵 **${truncate(title, 60)}**\n🎤 ${truncate(artist, 50)}\n\n${progressBar(index + 0.5, total)}`)
                     .setColor(CONFIG.COLOR.INFO)
                     .setThumbnail(song.cover || null)
                 ]
@@ -1024,13 +652,11 @@ async function processSong(song, interaction = null, index = 0, total = 1) {
         }
         
         return { status: uploadResult.success ? 'success' : 'failed', song: songs[songId], uploadResult };
-    } catch (e) {
-        return { status: 'failed', reason: e.message };
-    }
+    } catch (e) { return { status: 'failed', reason: e.message }; }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// [SECTION 17] - NOTIFY
+// [SECTION 14] - NOTIFY
 // ═══════════════════════════════════════════════════════════════════════════
 
 async function notifyNewSong(song) {
@@ -1038,15 +664,12 @@ async function notifyNewSong(song) {
     try {
         const channel = client.channels.cache.get(notificationChannelId);
         if (!channel) return;
-        
         const embed = new EmbedBuilder()
             .setTitle('🎉 เพลงใหม่มาแล้ว!')
             .setDescription(
-                '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
                 `🎵 **${truncate(song.title, 80)}**\n` +
                 `🎤 ${truncate(song.artist, 60)}\n` +
-                `⏱️ ${fmtDuration(song.duration)}\n` +
-                '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n' +
+                `⏱️ ${fmtDuration(song.duration)}\n\n` +
                 `🟢 **Roblox:** \`${song.robloxAssetId}\`\n` +
                 `📊 **รวม:** ${Object.keys(songs).length} เพลง`
             )
@@ -1054,190 +677,180 @@ async function notifyNewSong(song) {
             .setImage(ASSETS.NEW)
             .setFooter({ text: `🔔 ${new Date().toLocaleTimeString('th-TH')}` })
             .setTimestamp();
-        
         if (song.thumbnail) embed.setThumbnail(song.thumbnail);
         await channel.send({ content: '@everyone 🎵 เพลงใหม่!', embeds: [embed] });
     } catch (e) {}
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// [SECTION 18] - BUILD EMBEDS
+// [SECTION 15] - ★★★ DISPLAY ALL SONGS (ไม่จำกัด) ★★★
 // ═══════════════════════════════════════════════════════════════════════════
 
-function buildSongListEmbed(channelName = 'รายการเพลง Karaoke') {
+// ★ ลบข้อความเก่าทั้งหมดในช่อง
+async function deleteAllBotMessages(channel) {
+    try {
+        // ลบทีละ 100 (Discord จำกัด 100 ต่อครั้ง)
+        let totalDeleted = 0;
+        let fetchMore = true;
+        
+        while (fetchMore) {
+            const messages = await channel.messages.fetch({ limit: 100 });
+            const botMessages = messages.filter(m => m.author.id === client.user.id);
+            
+            if (botMessages.size === 0) {
+                fetchMore = false;
+                break;
+            }
+            
+            for (const msg of botMessages.values()) {
+                try { await msg.delete(); totalDeleted++; } catch (e) {}
+                // หน่วงเวลาเล็กน้อย กัน rate limit
+                if (totalDeleted % 5 === 0) await sleep(500);
+            }
+            
+            if (botMessages.size < 100) fetchMore = false;
+        }
+        
+        console.log(`  🗑️ ลบข้อความเก่า ${totalDeleted} ข้อความใน #${channel.name}`);
+    } catch (e) {
+        console.error(`  ❌ Delete error: ${e.message}`);
+    }
+}
+
+// ★ สร้าง Embeds ทั้งหมด (แบ่งหน้า)
+function buildAllSongsEmbeds(channelName, songsPerMsg = CONFIG.SONGS_PER_MSG) {
     const songList = Object.values(songs);
     
     if (songList.length === 0) {
-        return new EmbedBuilder()
+        return [new EmbedBuilder()
             .setTitle('🎤 ' + channelName)
-            .setDescription('```\n📭 ยังไม่มีเพลง\n```\n💡 ใช้ `/หาเพลง` หรือ `/เริ่มหาเพลง`')
+            .setDescription('```\n📭 ยังไม่มีเพลงในคลัง\n```\n💡 ใช้ `/หาเพลง` หรือ `/เริ่มหาเพลง`')
             .setColor(CONFIG.COLOR.BLACK)
             .setImage(ASSETS.MUSIC)
-            .setFooter({ text: `📊 0 เพลง · ${new Date().toLocaleTimeString('th-TH')}` });
+            .setFooter({ text: `📊 0 เพลง · ${new Date().toLocaleTimeString('th-TH')}` })
+        ];
     }
     
-    const uploaded = songList.filter(s => s.robloxAssetId).length;
-    const pending = songList.length - uploaded;
-    const sortedSongs = [...songList].sort((a, b) => new Date(b.addedAt || 0) - new Date(a.addedAt || 0));
-    const chunk = sortedSongs.slice(0, CONFIG.SONGS_PER_PAGE);
-    
-    const embed = new EmbedBuilder()
-        .setTitle('🎤 ' + channelName)
-        .setColor(CONFIG.COLOR.BLACK);
-    
-    embed.addFields({
-        name: '📊 สถิติ',
-        value: `> 🎵 \`${songList.length}\` · 🟢 \`${uploaded}\` · 🔴 \`${pending}\``,
-        inline: false
-    });
-    
-    let desc = '📀 **เพลงล่าสุด:**\n\n';
-    chunk.forEach((s, i) => {
-        const r = s.robloxAssetId ? '🟢' : '🔴';
-        const dur = fmtDuration(s.duration);
-        desc += `**${i+1}.** ${r} **${truncate(s.title, 50)}**\n`;
-        desc += `　　🎤 ${truncate(s.artist, 40)} · ⏱️ ${dur}\n\n`;
-    });
-    
-    if (songList.length > CONFIG.SONGS_PER_PAGE) desc += `\n*...และอีก ${songList.length - CONFIG.SONGS_PER_PAGE} เพลง*`;
-    
-    embed.setDescription(desc);
-    embed.setFooter({ text: `📊 ${songList.length} เพลง · 🟢 ${uploaded} · 🔴 ${pending} · ${new Date().toLocaleTimeString('th-TH')}` });
-    embed.setTimestamp();
-    return embed;
-}
-
-function buildLibraryEmbed(page = 0) {
-    const songList = Object.values(songs);
-    if (songList.length === 0) {
-        return { embed: new EmbedBuilder().setTitle('📚 คลังเพลง').setDescription('*ว่าง*').setColor(CONFIG.COLOR.BLACK).setImage(ASSETS.LIBRARY), pages: 1, currentPage: 0, total: 0 };
-    }
-    
-    songList.sort((a, b) => a.title.localeCompare(b.title));
-    const totalPages = Math.max(1, Math.ceil(songList.length / CONFIG.SONGS_PER_PAGE));
-    const currentPage = Math.max(0, Math.min(page, totalPages - 1));
-    const start = currentPage * CONFIG.SONGS_PER_PAGE;
-    const chunk = songList.slice(start, start + CONFIG.SONGS_PER_PAGE);
+    // เรียงเพลงตามตัวอักษร
+    const sortedSongs = [...songList].sort((a, b) => a.title.localeCompare(b.title));
     
     const uploaded = songList.filter(s => s.robloxAssetId).length;
     const pending = songList.length - uploaded;
     
-    const embed = new EmbedBuilder()
-        .setTitle('📚 คลังเพลงทั้งหมด')
-        .setDescription(
-            `**📊 สถิติ:**\n` +
-            `> 🎵 ทั้งหมด: \`${songList.length}\`\n` +
-            `> 🟢 นำเข้า Roblox: \`${uploaded}\`\n` +
-            `> 🔴 รอนำเข้า: \`${pending}\`\n` +
-            `━━━━━━━━━━━━━━━━━━━━━━━━━━━`
-        )
-        .setColor(CONFIG.COLOR.PRIMARY)
-        .setFooter({ text: `📄 ${currentPage + 1}/${totalPages} · ${songList.length} เพลง · ${new Date().toLocaleTimeString('th-TH')}` });
+    // แบ่งเป็นหน้าๆ ละ 15 เพลง
+    const totalPages = Math.ceil(sortedSongs.length / songsPerMsg);
+    const embeds = [];
     
-    let desc = embed.data.description + '\n';
-    chunk.forEach((s, i) => {
-        const num = start + i + 1;
-        const r = s.robloxAssetId ? '🟢' : '🔴';
-        const dur = fmtDuration(s.duration);
-        desc += `**${num}.** ${r} **${truncate(s.title, 55)}**\n`;
-        desc += `　🎤 ${truncate(s.artist, 45)}\n`;
-        desc += `　⏱️ ${dur} · 🆔 \`${s.id.slice(0, 12)}\`\n\n`;
-    });
-    embed.setDescription(desc);
-    return { embed, pages: totalPages, currentPage, total: songList.length };
+    for (let page = 0; page < totalPages; page++) {
+        const start = page * songsPerMsg;
+        const chunk = sortedSongs.slice(start, start + songsPerMsg);
+        
+        const embed = new EmbedBuilder()
+            .setTitle(`🎤 ${channelName}${totalPages > 1 ? ` (${page + 1}/${totalPages})` : ''}`)
+            .setColor(CONFIG.COLOR.BLACK);
+        
+        // ★ หน้าแรกใส่สถิติ
+        if (page === 0) {
+            embed.addFields({
+                name: '📊 สถิติรวม',
+                value: `> 🎵 **ทั้งหมด:** \`${songList.length}\` เพลง\n> 🟢 **นำเข้า Roblox:** \`${uploaded}\`\n> 🔴 **รอนำเข้า:** \`${pending}\``,
+                inline: false
+            });
+        }
+        
+        let desc = '';
+        chunk.forEach((s, i) => {
+            const num = start + i + 1;
+            const r = s.robloxAssetId ? '🟢' : '🔴';
+            const dur = fmtDuration(s.duration);
+            desc += `**${num}.** ${r} **${truncate(s.title, 55)}**\n`;
+            desc += `　🎤 ${truncate(s.artist, 45)}\n`;
+            desc += `　⏱️ ${dur} · 🆔 \`${s.id.slice(0, 10)}\`\n\n`;
+        });
+        
+        embed.setDescription(desc || 'ไม่มีเพลง');
+        embed.setFooter({ 
+            text: `📊 ${songList.length} เพลง · 🟢 ${uploaded} · 🔴 ${pending} · หน้า ${page + 1}/${totalPages} · ${new Date().toLocaleTimeString('th-TH')}` 
+        });
+        embed.setTimestamp();
+        
+        // ★ ใส่รูปเฉพาะหน้าแรก
+        if (page === 0 && sortedSongs[0]?.thumbnail) {
+            embed.setThumbnail(sortedSongs[0].thumbnail);
+        }
+        
+        embeds.push(embed);
+    }
+    
+    return embeds;
 }
 
-function buildLibraryButtons(currentPage, totalPages) {
-    return new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('lib_first').setLabel('⏮️').setStyle(ButtonStyle.Secondary).setDisabled(currentPage === 0),
-        new ButtonBuilder().setCustomId('lib_prev').setLabel('◀️').setStyle(ButtonStyle.Primary).setDisabled(currentPage === 0),
-        new ButtonBuilder().setCustomId('lib_page').setLabel(`${currentPage + 1}/${totalPages}`).setStyle(ButtonStyle.Secondary).setDisabled(true),
-        new ButtonBuilder().setCustomId('lib_next').setLabel('▶️').setStyle(ButtonStyle.Primary).setDisabled(currentPage >= totalPages - 1),
-        new ButtonBuilder().setCustomId('lib_last').setLabel('⏭️').setStyle(ButtonStyle.Secondary).setDisabled(currentPage >= totalPages - 1)
-    );
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// [SECTION 19] - POST CHANNELS
-// ═══════════════════════════════════════════════════════════════════════════
-
-async function deleteOldMessages(channel, messageIds) {
-    if (!channel || !messageIds || messageIds.length === 0) return;
-    for (const id of messageIds) {
-        try { const msg = await channel.messages.fetch(id); if (msg) await msg.delete(); } catch (e) {}
+// ★ Post ข้อความแสดงเพลงทั้งหมด (แบ่งเป็นหลายข้อความ)
+async function postAllSongsToChannel(channel, channelName) {
+    try {
+        // ลบของเก่าทั้งหมดก่อน
+        await deleteAllBotMessages(channel);
+        await sleep(500);
+        
+        // สร้าง Embeds ทั้งหมด
+        const embeds = buildAllSongsEmbeds(channelName);
+        
+        // ส่งทีละข้อความ (Discord จำกัด 10 embeds ต่อข้อความ)
+        const sentIds = [];
+        for (let i = 0; i < embeds.length; i += 10) {
+            const batch = embeds.slice(i, i + 10);
+            try {
+                const msg = await channel.send({ embeds: batch });
+                sentIds.push(msg.id);
+                // หน่วง 1 วิ ระหว่างข้อความ กัน rate limit
+                if (i + 10 < embeds.length) await sleep(1000);
+            } catch (e) {
+                console.error(`Send error: ${e.message}`);
+                await sleep(2000);
+            }
+        }
+        
+        return sentIds;
+    } catch (e) {
+        console.error(`postAllSongs error: ${e.message}`);
+        return [];
     }
 }
 
+// ★ อัปเดตช่องแสดงทั้งหมด
 async function postToDisplayChannels() {
     if (displayChannels.length === 0) return;
-    const hash = simpleHash(JSON.stringify(Object.values(songs).map(s => ({ id: s.id, r: s.robloxAssetId }))));
     
     for (let i = 0; i < displayChannels.length; i++) {
         const chId = displayChannels[i];
-        if (lastDisplayHashes[chId] === hash) continue;
-        
         try {
             const channel = client.channels.cache.get(chId);
             if (!channel) continue;
             
-            if (postedMessages.display[chId]?.length > 0) await deleteOldMessages(channel, postedMessages.display[chId]);
-            postedMessages.display[chId] = [];
-            
-            const embed = buildSongListEmbed(`รายการเพลง Karaoke (ช่อง ${i+1})`);
-            const msg = await channel.send({ embeds: [embed] });
-            postedMessages.display[chId] = [msg.id];
-            lastDisplayHashes[chId] = hash;
-            stats.totalUpdates++;
-        } catch (e) {}
+            console.log(`\n📺 อัปเดตช่องแสดง ${i+1}: #${channel.name}`);
+            await postAllSongsToChannel(channel, `รายการเพลง Karaoke (ช่อง ${i+1})`);
+        } catch (e) {
+            console.error(`Display error: ${e.message}`);
+        }
     }
+    stats.totalUpdates++;
 }
 
+// ★ อัปเดตช่องคลัง
 async function postToLibraryChannel() {
     if (!libraryChannelId) return;
-    const hash = simpleHash(JSON.stringify(Object.values(songs).map(s => ({ id: s.id, r: s.robloxAssetId }))));
-    if (lastLibraryHash === hash) return;
-    
     try {
         const channel = client.channels.cache.get(libraryChannelId);
         if (!channel) return;
-        if (postedMessages.library.length > 0) await deleteOldMessages(channel, postedMessages.library);
-        postedMessages.library = [];
         
-        const { embed, pages, currentPage } = buildLibraryEmbed(0);
-        const buttons = pages > 1 ? [buildLibraryButtons(currentPage, pages)] : [];
-        const msg = await channel.send({ embeds: [embed], components: buttons });
-        postedMessages.library = [msg.id];
-        lastLibraryHash = hash;
-        stats.totalUpdates++;
-    } catch (e) {}
+        console.log(`\n📚 อัปเดตช่องคลัง: #${channel.name}`);
+        await postAllSongsToChannel(channel, 'คลังเพลงทั้งหมด');
+    } catch (e) {
+        console.error(`Library error: ${e.message}`);
+    }
 }
 
-async function postToSearchChannel() {
-    if (!searchChannelId) return;
-    try {
-        const channel = client.channels.cache.get(searchChannelId);
-        if (!channel) return;
-        if (postedMessages.search) await deleteOldMessages(channel, [postedMessages.search]);
-        
-        const embed = new EmbedBuilder()
-            .setTitle('🔍 ค้นหาเพลง')
-            .setDescription(
-                '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
-                '**📝 พิมพ์ชื่อเพลง/ศิลปินในช่องนี้**\n' +
-                '> ผลลัพธ์แสดงเฉพาะคุณ · ลบใน 15 วินาที\n\n' +
-                '**✨ ตัวอย่าง:** `Saran` `Bodyslam` `แค่เพื่อน`\n' +
-                '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
-                `**📊 เพลงในคลัง:** ${Object.keys(songs).length} เพลง`
-            )
-            .setColor(CONFIG.COLOR.PRIMARY)
-            .setImage(ASSETS.SEARCH)
-            .setFooter({ text: '💡 ผลลัพธ์หายใน 15 วิ' });
-        
-        const msg = await channel.send({ embeds: [embed] });
-        postedMessages.search = msg.id;
-    } catch (e) {}
-}
-
+// ★ อัปเดตทุกช่อง
 async function updateAllChannels() {
     await postToDisplayChannels();
     await postToLibraryChannel();
@@ -1252,32 +865,124 @@ function startAutoUpdate() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// [SECTION 20] - AUTO SEARCH
+// [SECTION 16] - SEARCH CHANNEL (พิมพ์ตรงๆ)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ★ สร้าง Embed ช่องค้นหา (ข้อความต้อนรับ)
+async function postToSearchChannel() {
+    if (!searchChannelId) return;
+    try {
+        const channel = client.channels.cache.get(searchChannelId);
+        if (!channel) return;
+        
+        // ลบข้อความเก่าทั้งหมด
+        await deleteAllBotMessages(channel);
+        await sleep(500);
+        
+        const embed = new EmbedBuilder()
+            .setTitle('🔍 ค้นหาเพลง')
+            .setDescription(
+                '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
+                '**📝 วิธีค้นหาเพลง:**\n\n' +
+                '> **พิมพ์ชื่อเพลงหรือศิลปินในช่องนี้ได้เลย!**\n' +
+                '> ไม่ต้องใช้คำสั่ง `/` นำหน้า\n\n' +
+                '**✨ ตัวอย่าง:**\n' +
+                '> `Saran` - ค้นหาเพลงของ Saran\n' +
+                '> `แค่เพื่อน` - ค้นหาเพลงที่มีคำนี้\n' +
+                '> `Bodyslam` - ค้นหาเพลงของ Bodyslam\n\n' +
+                '**📌 หมายเหตุ:**\n' +
+                '> • ผลลัพธ์จะแสดง**เฉพาะคุณเห็น**\n' +
+                '> • ข้อความจะ**ลบใน 15 วินาที**\n' +
+                '> • ข้อความที่คุณพิมพ์จะถูกลบอัตโนมัติ\n' +
+                '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
+                `**📊 เพลงในคลัง:** ${Object.keys(songs).length} เพลง\n` +
+                `**🔄 อัปเดตล่าสุด:** ${new Date().toLocaleTimeString('th-TH')}`
+            )
+            .setColor(CONFIG.COLOR.PRIMARY)
+            .setImage(ASSETS.SEARCH)
+            .setFooter({ text: '💡 พิมพ์ชื่อเพลงในช่องนี้ได้เลย!' });
+        
+        const msg = await channel.send({ embeds: [embed] });
+        postedMessages.search = msg.id;
+    } catch (e) {
+        console.error('postToSearch error:', e.message);
+    }
+}
+
+// ★ ฟังก์ชันค้นหา (แสดงเฉพาะคนพิมพ์)
+async function handleSearchMessage(message, query) {
+    const results = searchSongs(query);
+    stats.totalSearchesByUser++;
+    
+    let embed;
+    if (results.length === 0) {
+        embed = new EmbedBuilder()
+            .setTitle(`🔍 "${truncate(query, 40)}"`)
+            .setDescription(
+                '❌ **ไม่พบเพลงที่ตรงกัน**\n\n' +
+                '💡 **ลองค้นหาด้วย:**\n' +
+                '> ชื่อเพลง (บางส่วนก็ได้)\n' +
+                '> ชื่อศิลปิน\n\n' +
+                '⏱️ ข้อความนี้จะหายไปใน **15 วินาที**'
+            )
+            .setColor(CONFIG.COLOR.ERROR)
+            .setFooter({ text: `📊 คลังมี ${Object.keys(songs).length} เพลง` });
+    } else {
+        const displayed = results.slice(0, 15); // แสดงสูงสุด 15 เพลง
+        embed = new EmbedBuilder()
+            .setTitle(`🔍 "${truncate(query, 40)}"`)
+            .setDescription(
+                `✅ **พบ ${results.length} เพลง**${results.length > 15 ? ' (แสดง 15 เพลงแรก)' : ''}\n` +
+                '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
+            )
+            .setColor(CONFIG.COLOR.SUCCESS)
+            .setFooter({ text: `⏱️ หายใน 15 วิ · ${new Date().toLocaleTimeString('th-TH')}` });
+        
+        let desc = embed.data.description;
+        displayed.forEach((s, i) => {
+            const r = s.robloxAssetId ? '🟢' : '🔴';
+            const dur = fmtDuration(s.duration);
+            desc += `\n**${i+1}.** ${r} **${truncate(s.title, 50)}**\n`;
+            desc += `　🎤 ${truncate(s.artist, 40)} · ⏱️ ${dur}\n`;
+        });
+        embed.setDescription(desc);
+        if (displayed[0].thumbnail) embed.setThumbnail(displayed[0].thumbnail);
+    }
+    
+    try {
+        // ส่งแบบ reply กับข้อความที่ผู้ใช้พิมพ์ → แสดงเฉพาะเขา (ephemeral-like)
+        const reply = await message.reply({ embeds: [embed] });
+        
+        // ★ ลบ reply ใน 15 วิ
+        setTimeout(async () => {
+            try { await reply.delete(); } catch (e) {}
+        }, CONFIG.SEARCH_DELETE_TIMEOUT);
+    } catch (e) {
+        console.error('Reply error:', e.message);
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// [SECTION 17] - AUTO SEARCH
 // ═══════════════════════════════════════════════════════════════════════════
 
 async function runAutoSearch(channel) {
     if (isLocked) return;
     try {
         stats.autoSearchCount++;
-        stats.lastAutoSearch = new Date().toISOString();
         
-        let progressMsg;
-        if (postedMessages.autoProgress) {
-            try { const old = await channel.messages.fetch(postedMessages.autoProgress); await old.delete(); } catch {}
-        }
-        
-        progressMsg = await channel.send({
+        let progressMsg = await channel.send({
             embeds: [new EmbedBuilder()
                 .setTitle('🔍 ระบบอัตโนมัติกำลังหาเพลง...')
-                .setDescription(`⏱️ ${new Date().toLocaleTimeString('th-TH')}\n🔄 รอบ ${stats.autoSearchCount}\n🛡️ 10-Layer Fallback`)
+                .setDescription(`⏱️ ${new Date().toLocaleTimeString('th-TH')}\n🔄 รอบ ${stats.autoSearchCount}`)
                 .setColor(CONFIG.COLOR.WARNING)
                 .setImage(ASSETS.SEARCH)]
         });
-        postedMessages.autoProgress = progressMsg.id;
         
         const results = await searchMultipleQueries(3);
         if (results.length === 0) {
             await progressMsg.edit({ embeds: [new EmbedBuilder().setTitle('⏭️ ไม่พบเพลง').setColor(CONFIG.COLOR.WARNING)] });
+            setTimeout(() => progressMsg.delete().catch(() => {}), 10000);
             return;
         }
         
@@ -1287,9 +992,7 @@ async function runAutoSearch(channel) {
         for (let i = 0; i < maxToTry; i++) {
             const song = results[i];
             if (songs[song.id]) { skipped++; continue; }
-            
             const r = await processSong(song, progressMsg, i, maxToTry);
-            
             if (r.status === 'success') {
                 await progressMsg.edit({
                     embeds: [new EmbedBuilder()
@@ -1297,70 +1000,28 @@ async function runAutoSearch(channel) {
                         .setDescription(
                             `🎵 **${truncate(r.song.title, 60)}**\n` +
                             `🎤 ${truncate(r.song.artist, 50)}\n\n` +
-                            `${progressBar(i + 1, maxToTry)}\n\n` +
                             `🟢 \`${r.uploadResult.assetId}\`\n` +
-                            `📊 รวม: ${Object.keys(songs).length} เพลง\n` +
-                            `⏭️ ข้าม: ${skipped} · ❌ ล้ม: ${failed}\n\n` +
-                            `🔄 รอบถัดไปใน ${CONFIG.AUTO_SEARCH_INTERVAL/1000} วิ`
+                            `📊 รวม: ${Object.keys(songs).length} เพลง`
                         )
                         .setColor(CONFIG.COLOR.SUCCESS)
                         .setImage(ASSETS.SUCCESS)
-                        .setThumbnail(r.song.thumbnail)
-                    ]
+                        .setThumbnail(r.song.thumbnail)]
                 });
+                setTimeout(() => progressMsg.delete().catch(() => {}), 15000);
                 return;
             } else if (r.status === 'skipped') skipped++;
             else if (r.status === 'failed') failed++;
         }
         
-        await progressMsg.edit({
-            embeds: [new EmbedBuilder()
-                .setTitle('⏭️ ไม่มีเพลงใหม่')
-                .setDescription(`ลอง ${maxToTry} เพลง\n⏭️ ข้าม: ${skipped} · ❌ ล้ม: ${failed}`)
-                .setColor(CONFIG.COLOR.WARNING)]
-        });
+        await progressMsg.edit({ embeds: [new EmbedBuilder().setTitle('⏭️ ไม่มีเพลงใหม่')
+            .setDescription(`ลอง ${maxToTry} เพลง\n⏭️ ข้าม: ${skipped} · ❌ ล้ม: ${failed}`)
+            .setColor(CONFIG.COLOR.WARNING)] });
+        setTimeout(() => progressMsg.delete().catch(() => {}), 10000);
     } catch (e) { console.error('Auto error:', e.message); }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// [SECTION 21] - EPHEMERAL SEARCH
-// ═══════════════════════════════════════════════════════════════════════════
-
-async function handleSearchMessage(message, query) {
-    const results = searchSongs(query);
-    stats.totalSearchesByUser++;
-    
-    let embed;
-    if (results.length === 0) {
-        embed = new EmbedBuilder()
-            .setTitle(`🔍 "${truncate(query, 40)}"`)
-            .setDescription('❌ ไม่พบเพลง\n⏱️ หายใน 15 วินาที')
-            .setColor(CONFIG.COLOR.ERROR);
-    } else {
-        const displayed = results.slice(0, 10);
-        embed = new EmbedBuilder()
-            .setTitle(`🔍 "${truncate(query, 40)}"`)
-            .setDescription(`✅ พบ ${results.length} เพลง\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`)
-            .setColor(CONFIG.COLOR.SUCCESS)
-            .setFooter({ text: `⏱️ หายใน 15 วิ · ${new Date().toLocaleTimeString('th-TH')}` });
-        
-        let desc = embed.data.description;
-        displayed.forEach((s, i) => {
-            const r = s.robloxAssetId ? '🟢' : '🔴';
-            desc += `\n**${i+1}.** ${r} **${truncate(s.title, 50)}**\n　🎤 ${truncate(s.artist, 40)}\n`;
-        });
-        embed.setDescription(desc);
-        if (displayed[0].thumbnail) embed.setThumbnail(displayed[0].thumbnail);
-    }
-    
-    try {
-        const reply = await message.reply({ embeds: [embed] });
-        setTimeout(async () => { try { await reply.delete(); } catch (e) {} }, CONFIG.SEARCH_DELETE_TIMEOUT);
-    } catch (e) {}
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// [SECTION 22] - BOT READY
+// [SECTION 18] - BOT READY
 // ═══════════════════════════════════════════════════════════════════════════
 
 client.once('ready', async () => {
@@ -1368,54 +1029,51 @@ client.once('ready', async () => {
     console.log(`✅ บอทออนไลน์: ${client.user.tag}`);
     console.log(`🔒 สถานะ: ${isLocked ? 'LOCKED' : 'UNLOCKED'}`);
     console.log(`📂 เพลง: ${Object.keys(songs).length}`);
-    console.log(`🛡️ 10-Layer Fallback + Anti-Rate-Limit`);
+    console.log(`📺 ช่องแสดง: ${displayChannels.length}`);
     console.log('═'.repeat(70) + '\n');
     
     await loadFromCloud();
     const cleanResult = await cleanupLibrary();
-    if (cleanResult.removed > 0) console.log(`🧹 Initial cleanup: ลบ ${cleanResult.removed} เพลง`);
+    if (cleanResult.removed > 0) console.log(`🧹 Cleanup: ลบ ${cleanResult.removed} เพลง`);
     
     startAutoSave();
     startAutoUpdate();
     startAutoCleanup();
     
     const commands = [
-        new SlashCommandBuilder().setName('unlock').setDescription('🔓 ปลดล็อก').addStringOption(o => o.setName('key').setDescription('Key').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-        new SlashCommandBuilder().setName('lock').setDescription('🔒 ล็อก').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-        new SlashCommandBuilder().setName('panel').setDescription('🎛️ แผงควบคุม').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-        new SlashCommandBuilder().setName('status').setDescription('📊 สถานะ').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-        new SlashCommandBuilder().setName('help').setDescription('📖 คำสั่ง').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+        new SlashCommandBuilder().setName('unlock').setDescription('🔓 ปลดล็อก').addStringOption(o => o.setName('key').setDescription('Key').setRequired(true)),
+        new SlashCommandBuilder().setName('lock').setDescription('🔒 ล็อก'),
+        new SlashCommandBuilder().setName('panel').setDescription('🎛️ แผงควบคุม'),
+        new SlashCommandBuilder().setName('status').setDescription('📊 สถานะ'),
+        new SlashCommandBuilder().setName('help').setDescription('📖 คำสั่ง'),
         
         new SlashCommandBuilder().setName('ตั้งค่าช่องแสดง').setDescription('📺 ช่องแสดงเพลง')
             .addChannelOption(o => o.setName('ช่อง1').setDescription('ช่อง 1').setRequired(true))
             .addChannelOption(o => o.setName('ช่อง2').setDescription('ช่อง 2').setRequired(false))
-            .addChannelOption(o => o.setName('ช่อง3').setDescription('ช่อง 3').setRequired(false))
-            .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-        new SlashCommandBuilder().setName('ตั้งค่าคลังเพลง').setDescription('📚 ช่องคลัง').addChannelOption(o => o.setName('ช่อง').setDescription('ช่อง').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-        new SlashCommandBuilder().setName('ตั้งค่าช่องแจ้งเตือน').setDescription('🔔 ช่องแจ้ง').addChannelOption(o => o.setName('ช่อง').setDescription('ช่อง').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-        new SlashCommandBuilder().setName('ตั้งค่าช่องค้นหา').setDescription('🔍 ช่องค้นหา').addChannelOption(o => o.setName('ช่อง').setDescription('ช่อง').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-        new SlashCommandBuilder().setName('ทดสอบ').setDescription('🧪 ทดสอบ').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+            .addChannelOption(o => o.setName('ช่อง3').setDescription('ช่อง 3').setRequired(false)),
+        new SlashCommandBuilder().setName('ตั้งค่าคลังเพลง').setDescription('📚 ช่องคลัง').addChannelOption(o => o.setName('ช่อง').setDescription('ช่อง').setRequired(true)),
+        new SlashCommandBuilder().setName('ตั้งค่าช่องแจ้งเตือน').setDescription('🔔 ช่องแจ้ง').addChannelOption(o => o.setName('ช่อง').setDescription('ช่อง').setRequired(true)),
+        new SlashCommandBuilder().setName('ตั้งค่าช่องค้นหา').setDescription('🔍 ช่องค้นหา').addChannelOption(o => o.setName('ช่อง').setDescription('ช่อง').setRequired(true)),
+        new SlashCommandBuilder().setName('ทดสอบ').setDescription('🧪 ทดสอบ'),
         
-        new SlashCommandBuilder().setName('หาเพลง').setDescription('🔍 หาเพลง').addStringOption(o => o.setName('ชื่อเพลง').setDescription('ชื่อ').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-        new SlashCommandBuilder().setName('ศิลปิน').setDescription('🎤 ดึงศิลปิน').addStringOption(o => o.setName('ชื่อศิลปิน').setDescription('ศิลปิน').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-        new SlashCommandBuilder().setName('เพลงฮิต').setDescription('🔥 เพลงฮิต').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+        new SlashCommandBuilder().setName('หาเพลง').setDescription('🔍 หาเพลง').addStringOption(o => o.setName('ชื่อเพลง').setDescription('ชื่อ').setRequired(true)),
+        new SlashCommandBuilder().setName('ศิลปิน').setDescription('🎤 ดึงศิลปิน').addStringOption(o => o.setName('ชื่อศิลปิน').setDescription('ศิลปิน').setRequired(true)),
+        new SlashCommandBuilder().setName('เพลงฮิต').setDescription('🔥 เพลงฮิต'),
         
-        new SlashCommandBuilder().setName('เริ่มหาเพลง').setDescription('🚀 เริ่ม Auto').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-        new SlashCommandBuilder().setName('หยุดหาเพลง').setDescription('⏹️ หยุด Auto').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+        new SlashCommandBuilder().setName('เริ่มหาเพลง').setDescription('🚀 เริ่ม Auto'),
+        new SlashCommandBuilder().setName('หยุดหาเพลง').setDescription('⏹️ หยุด Auto'),
         
-        new SlashCommandBuilder().setName('คลังเพลง').setDescription('📚 ดูคลัง'),
-        new SlashCommandBuilder().setName('ค้นหา').setDescription('🔎 ค้นหาในคลัง').addStringOption(o => o.setName('คำค้น').setDescription('คำ').setRequired(true)),
         new SlashCommandBuilder().setName('สุ่มเพลง').setDescription('🎲 สุ่ม'),
-        new SlashCommandBuilder().setName('ข้อมูลเพลง').setDescription('ℹ️ ข้อมูล').addStringOption(o => o.setName('id').setDescription('ID').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-        new SlashCommandBuilder().setName('ลบเพลง').setDescription('🗑️ ลบ').addStringOption(o => o.setName('id').setDescription('ID').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+        new SlashCommandBuilder().setName('ข้อมูลเพลง').setDescription('ℹ️ ข้อมูล').addStringOption(o => o.setName('id').setDescription('ID').setRequired(true)),
+        new SlashCommandBuilder().setName('ลบเพลง').setDescription('🗑️ ลบ').addStringOption(o => o.setName('id').setDescription('ID').setRequired(true)),
         
-        new SlashCommandBuilder().setName('อัปโหลด').setDescription('📤 เลือกอัปโหลด').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-        new SlashCommandBuilder().setName('อัปโหลดทั้งหมด').setDescription('📤 อัปโหลดทั้งหมด').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+        new SlashCommandBuilder().setName('อัปโหลด').setDescription('📤 เลือกอัปโหลด'),
+        new SlashCommandBuilder().setName('อัปโหลดทั้งหมด').setDescription('📤 อัปโหลดทั้งหมด'),
         
-        new SlashCommandBuilder().setName('สถิติ').setDescription('📈 สถิติ').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-        new SlashCommandBuilder().setName('สำรองข้อมูล').setDescription('💾 สำรอง').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-        new SlashCommandBuilder().setName('อัปเดตช่อง').setDescription('🔄 อัปเดต').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-        new SlashCommandBuilder().setName('เคลียร์คลัง').setDescription('🧹 เคลียร์').setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+        new SlashCommandBuilder().setName('สถิติ').setDescription('📈 สถิติ'),
+        new SlashCommandBuilder().setName('สำรองข้อมูล').setDescription('💾 สำรอง'),
+        new SlashCommandBuilder().setName('อัปเดตช่อง').setDescription('🔄 อัปเดต'),
+        new SlashCommandBuilder().setName('เคลียร์คลัง').setDescription('🧹 เคลียร์')
     ];
     
     try { await client.application.commands.set(commands); console.log('✅ Commands registered!'); } catch (e) { console.error(e.message); }
@@ -1425,23 +1083,34 @@ client.once('ready', async () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// [SECTION 23] - MESSAGE LISTENER
+// [SECTION 19] - ★★★ MESSAGE LISTENER (ช่องค้นหา) ★★★
 // ═══════════════════════════════════════════════════════════════════════════
 
 client.on('messageCreate', async message => {
+    // ข้าม bot
     if (message.author.bot) return;
+    
+    // ★ เช็คว่าเป็นช่องค้นหาหรือไม่
     if (!searchChannelId || message.channelId !== searchChannelId) return;
+    
+    // ★ ข้ามข้อความที่ bot เองส่ง (ข้อความต้อนรับ)
+    if (message.id === postedMessages.search) return;
     
     const query = message.content.trim();
     if (!query) return;
     
-    try { await message.delete(); } catch {}
+    // ★ ลบข้อความผู้ใช้ทันที
+    try { await message.delete(); } catch (e) {}
+    
+    // Rate limit
     if (!checkCooldown(message.author.id, 'search_msg')) return;
+    
+    // ★ ค้นหา + แสดงผลเฉพาะเขา
     await handleSearchMessage(message, query);
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// [SECTION 24] - INTERACTION HANDLER
+// [SECTION 20] - INTERACTION HANDLER
 // ═══════════════════════════════════════════════════════════════════════════
 
 client.on('interactionCreate', async interaction => {
@@ -1452,30 +1121,6 @@ client.on('interactionCreate', async interaction => {
     const replyEmbed = new EmbedBuilder().setColor(CONFIG.COLOR.BLACK);
     
     // PUBLIC
-    if (commandName === 'คลังเพลง') {
-        const { embed, pages, currentPage } = buildLibraryEmbed(0);
-        if (pages <= 1) return interaction.reply({ embeds: [embed] });
-        return interaction.reply({ embeds: [embed], components: [buildLibraryButtons(currentPage, pages)] });
-    }
-    
-    if (commandName === 'ค้นหา') {
-        const filter = options.getString('คำค้น');
-        const results = searchSongs(filter);
-        stats.totalSearchesByUser++;
-        
-        if (results.length === 0) return interaction.reply({ embeds: [new EmbedBuilder().setTitle(`🔍 "${filter}"`).setDescription('❌ ไม่พบเพลง').setColor(CONFIG.COLOR.ERROR)], ephemeral: true });
-        
-        const displayed = results.slice(0, 10);
-        const embed = new EmbedBuilder().setTitle(`🔍 "${filter}"`).setDescription(`✅ พบ ${results.length} เพลง\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`).setColor(CONFIG.COLOR.SUCCESS);
-        
-        let desc = embed.data.description;
-        displayed.forEach((s, i) => { const r = s.robloxAssetId ? '🟢' : '🔴'; desc += `\n**${i+1}.** ${r} **${truncate(s.title, 55)}**\n　🎤 ${truncate(s.artist, 45)}\n`; });
-        embed.setDescription(desc);
-        if (displayed[0].thumbnail) embed.setThumbnail(displayed[0].thumbnail);
-        
-        return interaction.reply({ embeds: [embed], ephemeral: true });
-    }
-    
     if (commandName === 'สุ่มเพลง') {
         const list = Object.values(songs);
         if (list.length === 0) return interaction.reply({ embeds: [replyEmbed.setDescription('📭 ว่าง!')] });
@@ -1484,20 +1129,19 @@ client.on('interactionCreate', async interaction => {
             embeds: [replyEmbed.setTitle('🎲 สุ่มได้เพลงนี้!')
                 .setDescription(`🎵 **${truncate(s.title, 60)}**\n🎤 ${truncate(s.artist, 50)}`)
                 .addFields({ name: '⏱️', value: `\`${fmtDuration(s.duration)}\``, inline: true }, { name: '🟢', value: s.robloxAssetId ? `\`${s.robloxAssetId}\`` : '🔴 รอ', inline: true })
-                .setThumbnail(s.thumbnail).setImage(ASSETS.MUSIC_NOTES).setColor(CONFIG.COLOR.PINK)],
+                .setThumbnail(s.thumbnail).setColor(CONFIG.COLOR.PINK)],
             ephemeral: true
         });
     }
     
-    // Admin
+    // OWNER/ADMIN
     if (commandName === 'unlock') {
         if (!isAdmin(interaction)) return interaction.reply({ embeds: [replyEmbed.setDescription('❌ Admin เท่านั้น!')], ephemeral: true });
         if (!checkUnlockRateLimit(interaction.user.id)) return interaction.reply({ embeds: [replyEmbed.setDescription('⏱️ รอ 10 วิ!')], ephemeral: true });
-        
         if (verifyKey(options.getString('key'))) {
             isLocked = false;
             await saveToCloud(true);
-            return interaction.reply({ embeds: [new EmbedBuilder().setTitle('🔓 ปลดล็อกสำเร็จ!').setDescription('ใช้ `/panel`').setColor(CONFIG.COLOR.SUCCESS).setImage(ASSETS.SUCCESS)], ephemeral: true });
+            return interaction.reply({ embeds: [new EmbedBuilder().setTitle('🔓 ปลดล็อกสำเร็จ!').setDescription('ใช้ `/panel`').setColor(CONFIG.COLOR.SUCCESS)], ephemeral: true });
         }
         return interaction.reply({ embeds: [new EmbedBuilder().setTitle('❌ Key ไม่ถูก!').setColor(CONFIG.COLOR.ERROR)], ephemeral: true });
     }
@@ -1519,49 +1163,35 @@ client.on('interactionCreate', async interaction => {
         if (!isAdmin(interaction)) return interaction.reply({ embeds: [replyEmbed.setDescription('❌ Admin!')], ephemeral: true });
         const list = Object.values(songs);
         const uploaded = list.filter(s => s.robloxAssetId).length;
-        
-        return interaction.reply({
-            embeds: [new EmbedBuilder().setTitle('📊 สถานะบอท v10.0')
-                .addFields(
-                    { name: '🔒 สถานะ', value: isLocked ? '`🔒`' : '`🔓`', inline: true },
-                    { name: '⏱️ ออนไลน์', value: `\`${fmtUptime(Date.now() - stats.startTime)}\``, inline: true },
-                    { name: '☁️ Storage', value: CONFIG.JSONBIN_ID ? '`✅ Cloud`' : '`⚠️ Local`', inline: true },
-                    { name: '📂 เพลง', value: `\`${list.length}\``, inline: true },
-                    { name: '🟢 นำเข้า', value: `\`${uploaded}\``, inline: true },
-                    { name: '🔴 รอ', value: `\`${list.length - uploaded}\``, inline: true },
-                    { name: '🛡️ L1 สำเร็จ', value: `\`${stats.layer1Success}\``, inline: true },
-                    { name: '🛡️ L2 สำเร็จ', value: `\`${stats.layer2Success}\``, inline: true },
-                    { name: '🛡️ L3 สำเร็จ', value: `\`${stats.layer3Success}\``, inline: true },
-                    { name: '🛡️ L4-L9', value: `\`${stats.layer4Success + stats.layer5Success + stats.layer6Success + stats.layer7Success + stats.layer8Success + stats.layer9Success}\``, inline: true },
-                    { name: '🛡️ L10', value: `\`${stats.layer10Success}\``, inline: true },
-                    { name: '⚠️ Rate Limit', value: `\`${stats.rateLimitHits}\``, inline: true },
-                    { name: '❌ ล้มเหลว', value: `\`${stats.totalFailures}\``, inline: true },
-                    { name: '🧹 เคลียร์', value: `\`${stats.totalCleaned}\``, inline: true },
-                    { name: '🗑️ ซ้ำ', value: `\`${stats.totalDuplicatesRemoved}\``, inline: true }
-                )
-                .setColor(isLocked ? CONFIG.COLOR.ERROR : CONFIG.COLOR.SUCCESS)
-                .setThumbnail(ASSETS.SHIELD).setTimestamp()]
-        });
+        return interaction.reply({ embeds: [new EmbedBuilder().setTitle('📊 สถานะบอท v12.0').addFields(
+            { name: '🔒 สถานะ', value: isLocked ? '`🔒`' : '`🔓`', inline: true },
+            { name: '⏱️ ออนไลน์', value: `\`${fmtUptime(Date.now() - stats.startTime)}\``, inline: true },
+            { name: '☁️ Storage', value: CONFIG.JSONBIN_ID ? '`✅ Cloud`' : '`⚠️ Local`', inline: true },
+            { name: '📂 เพลง', value: `\`${list.length}\``, inline: true },
+            { name: '🟢 นำเข้า', value: `\`${uploaded}\``, inline: true },
+            { name: '🔴 รอ', value: `\`${list.length - uploaded}\``, inline: true },
+            { name: '🛡️ ชั้น 1', value: `\`${stats.layer1Success}\``, inline: true },
+            { name: '🛡️ ชั้น 2', value: `\`${stats.layer2Success}\``, inline: true },
+            { name: '🛡️ ชั้น 3', value: `\`${stats.layer3Success}\``, inline: true },
+            { name: '❌ ล้มเหลว', value: `\`${stats.totalFailures}\``, inline: true },
+            { name: '🧹 เคลียร์', value: `\`${stats.totalCleaned}\``, inline: true },
+            { name: '🗑️ ซ้ำ', value: `\`${stats.totalDuplicatesRemoved}\``, inline: true }
+        ).setColor(isLocked ? CONFIG.COLOR.ERROR : CONFIG.COLOR.SUCCESS).setThumbnail(ASSETS.CHART).setTimestamp()] });
     }
     
     if (commandName === 'help') {
-        return interaction.reply({
-            embeds: [new EmbedBuilder().setTitle('📖 คำสั่งทั้งหมด').setColor(CONFIG.COLOR.PRIMARY)
-                .setDescription('**Karaoke Bot v10.0 - 10-Layer Fallback**')
-                .addFields(
-                    { name: '🌟 ทุกคน', value: '`/คลังเพลง` `/ค้นหา` `/สุ่มเพลง`', inline: false },
-                    { name: '🔒 Security', value: '`/unlock` `/lock` `/status` `/panel` `/help`', inline: false },
-                    { name: '⚙️ ตั้งค่า', value: '`/ตั้งค่าช่องแสดง` `/ตั้งค่าคลังเพลง` `/ตั้งค่าช่องแจ้งเตือน` `/ตั้งค่าช่องค้นหา`', inline: false },
-                    { name: '🔍 ค้นหา', value: '`/หาเพลง` `/ศิลปิน` `/เพลงฮิต`', inline: false },
-                    { name: '🚀 Auto', value: '`/เริ่มหาเพลง` `/หยุดหาเพลง`', inline: false },
-                    { name: '📤 อัปโหลด', value: '`/อัปโหลด` `/อัปโหลดทั้งหมด`', inline: false },
-                    { name: '🧹 เคลียร์', value: '`/เคลียร์คลัง`', inline: false },
-                    { name: '📊 ข้อมูล', value: '`/สถิติ` `/สำรองข้อมูล` `/อัปเดตช่อง`', inline: false }
-                )
-                .setImage(ASSETS.SHIELD)
-                .setFooter({ text: '✨ 10-Layer Fallback · Anti-Rate-Limit · Auto-Clean' })],
-            ephemeral: true
-        });
+        return interaction.reply({ embeds: [new EmbedBuilder().setTitle('📖 คำสั่งทั้งหมด').setColor(CONFIG.COLOR.PRIMARY)
+            .addFields(
+                { name: '🌟 ทุกคน', value: '`/สุ่มเพลง` · ช่องค้นหา (พิมพ์ตรง)', inline: false },
+                { name: '🔒 Security', value: '`/unlock` `/lock` `/status` `/panel` `/help`', inline: false },
+                { name: '⚙️ ตั้งค่า', value: '`/ตั้งค่าช่องแสดง` `/ตั้งค่าคลังเพลง` `/ตั้งค่าช่องแจ้งเตือน` `/ตั้งค่าช่องค้นหา`', inline: false },
+                { name: '🔍 ค้นหา', value: '`/หาเพลง` `/ศิลปิน` `/เพลงฮิต`', inline: false },
+                { name: '🚀 Auto', value: '`/เริ่มหาเพลง` `/หยุดหาเพลง`', inline: false },
+                { name: '📤 อัปโหลด', value: '`/อัปโหลด` `/อัปโหลดทั้งหมด`', inline: false },
+                { name: '🧹 เคลียร์', value: '`/เคลียร์คลัง`', inline: false },
+                { name: '📊 ข้อมูล', value: '`/สถิติ` `/สำรองข้อมูล` `/อัปเดตช่อง`', inline: false })
+            .setImage(ASSETS.MUSIC)
+            .setFooter({ text: '✨ แสดงเพลงทั้งหมด · ค้นหาพิมพ์ตรง · 3-Layer' })], ephemeral: true });
     }
     
     if (commandName === 'ตั้งค่าช่องแสดง') {
@@ -1569,7 +1199,7 @@ client.on('interactionCreate', async interaction => {
         displayChannels = [options.getChannel('ช่อง1').id];
         if (options.getChannel('ช่อง2')) displayChannels.push(options.getChannel('ช่อง2').id);
         if (options.getChannel('ช่อง3')) displayChannels.push(options.getChannel('ช่อง3').id);
-        postedMessages.display = {}; lastDisplayHashes = {};
+        lastDisplayHashes = {};
         await saveToCloud(true);
         await interaction.reply({ embeds: [new EmbedBuilder().setTitle('📺 ตั้งค่าสำเร็จ!').setDescription(displayChannels.map((id, i) => `${i+1}. <#${id}>`).join('\n')).setColor(CONFIG.COLOR.SUCCESS)] });
         await postToDisplayChannels();
@@ -1578,7 +1208,7 @@ client.on('interactionCreate', async interaction => {
     if (commandName === 'ตั้งค่าคลังเพลง') {
         if (!isAdmin(interaction)) return interaction.reply({ embeds: [replyEmbed.setDescription('❌ Admin!')], ephemeral: true });
         libraryChannelId = options.getChannel('ช่อง').id;
-        postedMessages.library = []; lastLibraryHash = '';
+        lastLibraryHash = '';
         await saveToCloud(true);
         await interaction.reply({ embeds: [new EmbedBuilder().setTitle('📚 ตั้งค่าคลังสำเร็จ!').setDescription(`<#${libraryChannelId}>`).setColor(CONFIG.COLOR.SUCCESS)] });
         await postToLibraryChannel();
@@ -1588,7 +1218,7 @@ client.on('interactionCreate', async interaction => {
         if (!isAdmin(interaction)) return interaction.reply({ embeds: [replyEmbed.setDescription('❌ Admin!')], ephemeral: true });
         notificationChannelId = options.getChannel('ช่อง').id;
         await saveToCloud(true);
-        await interaction.reply({ embeds: [new EmbedBuilder().setTitle('🔔 ตั้งค่าแจ้งสำเร็จ!').setDescription(`<#${notificationChannelId}>`).setColor(CONFIG.COLOR.SUCCESS).setImage(ASSETS.BELL)] });
+        await interaction.reply({ embeds: [new EmbedBuilder().setTitle('🔔 ตั้งค่าสำเร็จ!').setDescription(`<#${notificationChannelId}>`).setColor(CONFIG.COLOR.SUCCESS).setImage(ASSETS.BELL)] });
     }
     
     if (commandName === 'ตั้งค่าช่องค้นหา') {
@@ -1596,27 +1226,25 @@ client.on('interactionCreate', async interaction => {
         searchChannelId = options.getChannel('ช่อง').id;
         postedMessages.search = null;
         await saveToCloud(true);
-        await interaction.reply({ embeds: [new EmbedBuilder().setTitle('🔍 ตั้งค่าค้นหาสำเร็จ!').setDescription(`<#${searchChannelId}>\n💡 พิมพ์ชื่อเพลงในช่อง → เห็นเฉพาะคุณ + ลบ 15 วิ`).setColor(CONFIG.COLOR.SUCCESS).setImage(ASSETS.SEARCH)] });
+        await interaction.reply({ embeds: [new EmbedBuilder().setTitle('🔍 ตั้งค่าสำเร็จ!').setDescription(`<#${searchChannelId}>\n💡 พิมพ์ชื่อเพลงในช่อง → เห็นเฉพาะคุณ`).setColor(CONFIG.COLOR.SUCCESS).setImage(ASSETS.SEARCH)] });
         await postToSearchChannel();
     }
     
     if (commandName === 'อัปเดตช่อง') {
         if (!isAdmin(interaction)) return interaction.reply({ embeds: [replyEmbed.setDescription('❌ Admin!')], ephemeral: true });
         await interaction.deferReply();
-        lastLibraryHash = ''; lastDisplayHashes = {};
-        await updateAllChannels(); await postToSearchChannel();
-        await interaction.editReply({ embeds: [replyEmbed.setTitle('🔄 อัปเดตแล้ว').setColor(CONFIG.COLOR.SUCCESS)] });
+        await updateAllChannels();
+        await postToSearchChannel();
+        await interaction.editReply({ embeds: [replyEmbed.setTitle('🔄 อัปเดตทุกช่องแล้ว!').setDescription('ลบของเก่า + แสดงใหม่ครบ').setColor(CONFIG.COLOR.SUCCESS)] });
     }
     
     if (commandName === 'เคลียร์คลัง') {
         if (!isAdmin(interaction)) return interaction.reply({ embeds: [replyEmbed.setDescription('❌ Admin!')], ephemeral: true });
         await interaction.deferReply();
         const result = await cleanupLibrary();
-        
         let desc = `**🧹 ผลการเคลียร์:**\n\n> 📊 ก่อน: \`${result.before}\`\n> 📊 หลัง: \`${result.after}\`\n> 🗑️ ลบ: \`${result.removed}\`\n> 🔄 ซ้ำ: \`${result.duplicates}\`\n> ❌ ไม่ครบ: \`${result.invalid}\``;
-        
         await interaction.editReply({ embeds: [replyEmbed.setTitle('🧹 เคลียร์สำเร็จ!').setDescription(desc).setColor(result.removed > 0 ? CONFIG.COLOR.SUCCESS : CONFIG.COLOR.INFO).setImage(ASSETS.BROOM)] });
-        if (result.removed > 0) { lastLibraryHash = ''; lastDisplayHashes = {}; await updateAllChannels(); }
+        if (result.removed > 0) await updateAllChannels();
     }
     
     if (commandName === 'ทดสอบ') {
@@ -1645,20 +1273,16 @@ client.on('interactionCreate', async interaction => {
         await interaction.deferReply();
         const query = options.getString('ชื่อเพลง');
         await interaction.editReply({ embeds: [replyEmbed.setTitle('🔍 กำลังค้นหา...').setDescription(`**${query}**`).setColor(CONFIG.COLOR.WARNING).setImage(ASSETS.SEARCH)] });
-        
         const results = await searchJoox(query);
         if (results.length === 0) return interaction.editReply({ embeds: [replyEmbed.setDescription(`❌ ไม่พบเพลง`).setColor(CONFIG.COLOR.ERROR)] });
-        
         const shuffled = shuffleArray(results);
         const maxTry = Math.min(shuffled.length, 15);
         let result = null, skipped = 0;
-        
         for (let i = 0; i < maxTry; i++) {
             result = await processSong(shuffled[i], interaction, i, maxTry);
             if (result.status === 'success') break;
             if (result.status === 'skipped') skipped++;
         }
-        
         if (result?.status === 'success') {
             await interaction.editReply({ embeds: [replyEmbed.setTitle('✅ เพิ่มเพลงสำเร็จ!')
                 .setThumbnail(result.song.thumbnail).setImage(ASSETS.SUCCESS)
@@ -1669,7 +1293,7 @@ client.on('interactionCreate', async interaction => {
                     { name: '🟢 Roblox', value: `\`${result.uploadResult.assetId}\``, inline: false })
                 .setColor(CONFIG.COLOR.SUCCESS)] });
         } else {
-            await interaction.editReply({ embeds: [replyEmbed.setDescription(`❌ ลอง ${maxTry} เพลง · ข้าม ${skipped} · ล้มเหลวทั้งหมด`).setColor(CONFIG.COLOR.ERROR)] });
+            await interaction.editReply({ embeds: [replyEmbed.setDescription(`❌ ลอง ${maxTry} เพลง · ข้าม ${skipped}`).setColor(CONFIG.COLOR.ERROR)] });
         }
     }
     
@@ -1678,9 +1302,7 @@ client.on('interactionCreate', async interaction => {
         const artist = options.getString('ชื่อศิลปิน');
         const results = await searchJoox(artist);
         if (results.length === 0) return interaction.editReply({ embeds: [replyEmbed.setDescription(`❌ ไม่พบ **${artist}**`).setColor(CONFIG.COLOR.ERROR)] });
-        
         await interaction.editReply({ embeds: [new EmbedBuilder().setTitle(`⏳ โหลด ${artist}...`).setDescription(`พบ ${results.length} เพลง`).setColor(CONFIG.COLOR.WARNING)] });
-        
         const added = [], skipped = [];
         for (let i = 0; i < results.length; i++) {
             const r = await processSong(results[i], interaction, i, results.length);
@@ -1688,7 +1310,6 @@ client.on('interactionCreate', async interaction => {
             else skipped.push(r.reason);
             await sleep(2000);
         }
-        
         const summary = added.length > 0 ? added.map(s => `> 🟢 **${truncate(s.title, 50)}**`).join('\n') : '> ไม่มีเพลงใหม่';
         await interaction.editReply({ embeds: [new EmbedBuilder().setTitle(`✅ ${artist}`).setDescription(`**รายชื่อ:**\n${summary}`)
             .addFields({ name: '➕ สำเร็จ', value: `\`${added.length}\``, inline: true }, { name: '⏭️ ข้าม', value: `\`${skipped.length}\``, inline: true }, { name: '📊 รวม', value: `\`${Object.keys(songs).length}\``, inline: true })
@@ -1699,20 +1320,16 @@ client.on('interactionCreate', async interaction => {
         await interaction.deferReply();
         const results = await searchJoox('เพลงไทย');
         if (results.length === 0) return interaction.editReply({ embeds: [replyEmbed.setDescription('❌ ไม่พบ')] });
-        
         await interaction.editReply({ embeds: [new EmbedBuilder().setTitle('⏳ ดึงเพลงฮิต...').setDescription(`พบ ${results.length} เพลง`).setColor(CONFIG.COLOR.WARNING)] });
-        
         const shuffled = shuffleArray(results);
         const maxTry = Math.min(shuffled.length, 15);
         const added = [], skipped = [];
-        
         for (let i = 0; i < maxTry; i++) {
             const r = await processSong(shuffled[i], interaction, i, maxTry);
             if (r.status === 'success') added.push(r.song);
             else skipped.push(r.reason);
             await sleep(2000);
         }
-        
         await interaction.editReply({ embeds: [new EmbedBuilder().setTitle('🔥 เพลงฮิต')
             .setDescription(added.map(s => `> **${truncate(s.title, 50)}**`).join('\n') || '> ไม่มีเพลงใหม่')
             .addFields({ name: '➕', value: `\`${added.length}\``, inline: true }, { name: '⏭️', value: `\`${skipped.length}\``, inline: true })
@@ -1722,11 +1339,9 @@ client.on('interactionCreate', async interaction => {
     if (commandName === 'เริ่มหาเพลง') {
         if (autoTask) return interaction.reply({ embeds: [replyEmbed.setDescription('⚠️ ทำงานอยู่!')] });
         if (displayChannels.length === 0) return interaction.reply({ embeds: [replyEmbed.setDescription('⚠️ ตั้งค่าช่องแสดงก่อน!').setColor(CONFIG.COLOR.WARNING)] });
-        
         await interaction.reply({ embeds: [replyEmbed.setTitle('🚀 เริ่มระบบ Auto!')
-            .setDescription(`⏱️ รอบละ: ${CONFIG.AUTO_SEARCH_INTERVAL/1000} วิ\n🔍 3 คำ/รอบ\n🛡️ 10-Layer Fallback\n🧹 Auto-cleanup ทุก 10 นาที`)
+            .setDescription(`⏱️ รอบละ: ${CONFIG.AUTO_SEARCH_INTERVAL/1000} วิ\n🔍 3 คำ/รอบ\n🛡️ 3-Layer Fallback\n🧹 Cleanup ทุก 10 นาที`)
             .setColor(CONFIG.COLOR.SUCCESS).setImage(ASSETS.ROCKET)] });
-        
         const channel = client.channels.cache.get(displayChannels[0]);
         if (channel) {
             await runAutoSearch(channel);
@@ -1743,7 +1358,6 @@ client.on('interactionCreate', async interaction => {
         const id = options.getString('id');
         const song = songs[id];
         if (!song) return interaction.reply({ embeds: [replyEmbed.setDescription('❌ ไม่พบ!')], ephemeral: true });
-        
         const embed = new EmbedBuilder().setTitle('ℹ️ ข้อมูลเพลง').setColor(CONFIG.COLOR.PRIMARY)
             .addFields(
                 { name: '🎵 ชื่อ', value: song.title, inline: false },
@@ -1752,10 +1366,8 @@ client.on('interactionCreate', async interaction => {
                 { name: '💿 อัลบั้ม', value: song.album || 'ไม่ระบุ', inline: true },
                 { name: '🆔 ID', value: `\`${song.id}\``, inline: false },
                 { name: '🟢 Roblox', value: song.robloxAssetId ? `\`${song.robloxAssetId}\`` : '🔴 รอ', inline: true },
-                { name: '🔍 คำค้นหา', value: song.searchQuery || 'ไม่ระบุ', inline: true },
                 { name: '📅 เพิ่มเมื่อ', value: song.addedAt ? new Date(song.addedAt).toLocaleString('th-TH') : 'ไม่ระบุ', inline: false });
         if (song.thumbnail) embed.setThumbnail(song.thumbnail);
-        
         await interaction.reply({ embeds: [embed] });
     }
     
@@ -1766,7 +1378,6 @@ client.on('interactionCreate', async interaction => {
             delete songs[id];
             stats.totalSongsRemoved++;
             await saveToCloud(true);
-            lastLibraryHash = ''; lastDisplayHashes = {};
             await interaction.reply({ embeds: [replyEmbed.setTitle('✅ ลบเพลง').setDescription(`**${truncate(title, 60)}**`).setColor(CONFIG.COLOR.SUCCESS)] });
             await updateAllChannels();
         } else await interaction.reply({ embeds: [replyEmbed.setDescription('❌ ไม่พบ!')] });
@@ -1775,23 +1386,19 @@ client.on('interactionCreate', async interaction => {
     if (commandName === 'อัปโหลด') {
         const pending = Object.values(songs).filter(s => !s.robloxAssetId);
         if (pending.length === 0) return interaction.reply({ embeds: [replyEmbed.setDescription('✅ ทุกเพลงอัปโหลดแล้ว!')] });
-        
         const select = new StringSelectMenuBuilder().setCustomId('select_upload').setPlaceholder('เลือกเพลง (สูงสุด 10)')
             .setMinValues(1).setMaxValues(Math.min(pending.length, 10))
             .addOptions(pending.slice(0, 25).map(s => ({ label: s.title.slice(0, 100), description: `🎤 ${(s.artist || 'Unknown').slice(0, 50)}`.slice(0, 100), value: s.id })));
-        
         await interaction.reply({ embeds: [new EmbedBuilder().setTitle('📤 เลือกเพลง').setDescription(`**${pending.length}** เพลงรอ`).setColor(CONFIG.COLOR.PRIMARY).setImage(ASSETS.UPLOAD)], components: [new ActionRowBuilder().addComponents(select)] });
     }
     
     if (commandName === 'อัปโหลดทั้งหมด') {
         const pending = Object.values(songs).filter(s => !s.robloxAssetId);
         if (pending.length === 0) return interaction.reply({ embeds: [replyEmbed.setDescription('✅ ทุกเพลงอัปโหลดแล้ว!')] });
-        
         await interaction.deferReply();
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId('confirm_upload_all').setLabel('✅ ยืนยัน').setStyle(ButtonStyle.Success),
             new ButtonBuilder().setCustomId('cancel_upload_all').setLabel('❌ ยกเลิก').setStyle(ButtonStyle.Danger));
-        
         await interaction.editReply({ embeds: [new EmbedBuilder().setTitle('⚠️ ยืนยัน').setDescription(`อัปโหลด **${pending.length}** เพลง\n⏱️ ~${Math.ceil(pending.length * 0.5)} นาที`).setColor(CONFIG.COLOR.WARNING).setImage(ASSETS.WARNING)], components: [row] });
     }
     
@@ -1800,21 +1407,15 @@ client.on('interactionCreate', async interaction => {
         const byArtist = {};
         list.forEach(s => { byArtist[s.artist] = (byArtist[s.artist] || 0) + 1; });
         const top = Object.entries(byArtist).sort((a, b) => b[1] - a[1]).slice(0, 5);
-        
-        await interaction.reply({ embeds: [replyEmbed.setTitle('📈 สถิติ v10.0').setColor(CONFIG.COLOR.PRIMARY).setImage(ASSETS.CHART)
+        await interaction.reply({ embeds: [replyEmbed.setTitle('📈 สถิติ v12.0').setColor(CONFIG.COLOR.PRIMARY).setImage(ASSETS.CHART)
             .addFields(
                 { name: '🔍 ค้นหา', value: `\`${stats.totalSearches}\``, inline: true },
                 { name: '⬇️ ดาวน์โหลด', value: `\`${stats.totalDownloads}\``, inline: true },
                 { name: '📤 อัปโหลด', value: `\`${stats.totalUploads}\``, inline: true },
                 { name: '❌ ล้มเหลว', value: `\`${stats.totalFailures}\``, inline: true },
-                { name: '⏭️ ข้าม', value: `\`${stats.totalSkipped}\``, inline: true },
-                { name: '🛡️ L1', value: `\`${stats.layer1Success}\``, inline: true },
-                { name: '🛡️ L2', value: `\`${stats.layer2Success}\``, inline: true },
-                { name: '🛡️ L3', value: `\`${stats.layer3Success}\``, inline: true },
-                { name: '🛡️ L4-L9', value: `\`${stats.layer4Success + stats.layer5Success + stats.layer6Success + stats.layer7Success + stats.layer8Success + stats.layer9Success}\``, inline: true },
-                { name: '🛡️ L10', value: `\`${stats.layer10Success}\``, inline: true },
-                { name: '⚠️ Rate Limit', value: `\`${stats.rateLimitHits}\``, inline: true },
-                { name: '🧹 เคลียร์', value: `\`${stats.totalCleaned}\``, inline: true },
+                { name: '🛡️ ชั้น 1', value: `\`${stats.layer1Success}\``, inline: true },
+                { name: '🛡️ ชั้น 2', value: `\`${stats.layer2Success}\``, inline: true },
+                { name: '🛡️ ชั้น 3', value: `\`${stats.layer3Success}\``, inline: true },
                 { name: '📊 ในคลัง', value: `\`${list.length}\``, inline: true },
                 { name: '🎤 Top 5', value: top.map(([a, c]) => `> ${truncate(a, 25)}: **${c}**`).join('\n') || '> ไม่มี', inline: false })
             .setTimestamp()] });
@@ -1822,26 +1423,11 @@ client.on('interactionCreate', async interaction => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// [SECTION 25] - COMPONENT HANDLER
+// [SECTION 21] - COMPONENT HANDLER
 // ═══════════════════════════════════════════════════════════════════════════
 
 async function handleComponents(interaction) {
-    if (interaction.customId.startsWith('lib_')) {
-        const match = interaction.message.embeds[0].footer?.text?.match(/หน้า (\d+)\/(\d+)/);
-        if (!match) return;
-        let currentPage = parseInt(match[1]) - 1;
-        const totalPages = parseInt(match[2]);
-        
-        if (interaction.customId === 'lib_first') currentPage = 0;
-        if (interaction.customId === 'lib_prev') currentPage = Math.max(0, currentPage - 1);
-        if (interaction.customId === 'lib_next') currentPage = Math.min(totalPages - 1, currentPage + 1);
-        if (interaction.customId === 'lib_last') currentPage = totalPages - 1;
-        
-        const { embed, pages, currentPage: newPage } = buildLibraryEmbed(currentPage);
-        return interaction.update({ embeds: [embed], components: [buildLibraryButtons(newPage, pages)] });
-    }
-    
-    if (!isAdmin(interaction)) return interaction.reply({ content: '❌ Admin!', ephemeral: true });
+    if (!isAdmin(interaction)) return interaction.reply({ content: '❌ Admin เท่านั้น!', ephemeral: true });
     if (isLocked) return interaction.reply({ content: '🔒 ล็อกอยู่!', ephemeral: true });
     
     if (interaction.customId === 'admin_stats') {
@@ -1852,15 +1438,14 @@ async function handleComponents(interaction) {
                 { name: '📂 เพลง', value: `\`${list.length}\``, inline: true },
                 { name: '🟢 นำเข้า', value: `\`${uploaded}\``, inline: true },
                 { name: '🔴 รอ', value: `\`${list.length - uploaded}\``, inline: true },
-                { name: '🛡️ L1-L3', value: `\`${stats.layer1Success + stats.layer2Success + stats.layer3Success}\``, inline: true },
-                { name: '🛡️ L4-L9', value: `\`${stats.layer4Success + stats.layer5Success + stats.layer6Success + stats.layer7Success + stats.layer8Success + stats.layer9Success}\``, inline: true },
-                { name: '🛡️ L10', value: `\`${stats.layer10Success}\``, inline: true })
+                { name: '🛡️ ชั้น 1', value: `\`${stats.layer1Success}\``, inline: true },
+                { name: '🛡️ ชั้น 2', value: `\`${stats.layer2Success}\``, inline: true },
+                { name: '🛡️ ชั้น 3', value: `\`${stats.layer3Success}\``, inline: true })
         ], ephemeral: true });
     }
     
     if (interaction.customId === 'admin_backup') { await interaction.deferReply({ ephemeral: true }); await saveToCloud(true); await interaction.editReply({ embeds: [new EmbedBuilder().setTitle('💾 สำรองแล้ว').setColor(CONFIG.COLOR.SUCCESS)] }); return; }
-    if (interaction.customId === 'admin_refresh') { await interaction.deferReply({ ephemeral: true }); lastLibraryHash = ''; lastDisplayHashes = {}; await updateAllChannels(); await postToSearchChannel(); await interaction.editReply({ embeds: [new EmbedBuilder().setTitle('🔄 รีเฟรชแล้ว').setColor(CONFIG.COLOR.SUCCESS)] }); return; }
-    if (interaction.customId === 'admin_browse') { const { embed, pages, currentPage } = buildLibraryEmbed(0); await interaction.reply({ embeds: [embed], components: pages > 1 ? [buildLibraryButtons(currentPage, pages)] : [], ephemeral: true }); return; }
+    if (interaction.customId === 'admin_refresh') { await interaction.deferReply({ ephemeral: true }); await updateAllChannels(); await postToSearchChannel(); await interaction.editReply({ embeds: [new EmbedBuilder().setTitle('🔄 รีเฟรชแล้ว').setColor(CONFIG.COLOR.SUCCESS)] }); return; }
     if (interaction.customId === 'admin_lock') { isLocked = !isLocked; await saveToCloud(true); const { embed, components } = buildAdminPanel(); await interaction.update({ embeds: [embed], components }); return; }
     
     if (interaction.customId === 'admin_setup_channels') {
@@ -1881,7 +1466,6 @@ async function handleComponents(interaction) {
         songs = {};
         stats.totalSongsRemoved += count;
         await saveToCloud(true);
-        lastLibraryHash = ''; lastDisplayHashes = {};
         await updateAllChannels();
         await interaction.update({ embeds: [new EmbedBuilder().setTitle('✅ ลบแล้ว').setDescription(`ลบ ${count} เพลง`).setColor(CONFIG.COLOR.SUCCESS)], components: [] }); return;
     }
@@ -1901,12 +1485,10 @@ async function handleComponents(interaction) {
         await interaction.deferUpdate();
         const ids = interaction.customId === 'select_upload' ? interaction.values : Object.values(songs).filter(s => !s.robloxAssetId).map(s => s.id);
         let ok = 0, fail = 0;
-        
         for (let i = 0; i < ids.length; i++) {
             const song = songs[ids[i]];
             if (!song) continue;
             await interaction.editReply({ embeds: [new EmbedBuilder().setTitle(`📤 ${i+1}/${ids.length}`).setDescription(`🎵 **${truncate(song.title, 60)}**\n\n${progressBar(i, ids.length)}`).setColor(CONFIG.COLOR.INFO).setImage(ASSETS.UPLOAD).setThumbnail(song.thumbnail)], components: [] });
-            
             const audioPath = await downloadAudio(song.id, song.title, song.artist);
             if (!audioPath) { fail++; continue; }
             const up = await uploadToRoblox(audioPath, song.title, song.artist);
@@ -1914,8 +1496,6 @@ async function handleComponents(interaction) {
             if (up.success) { songs[song.id].robloxAssetId = up.assetId; songs[song.id].robloxError = null; ok++; } else { songs[song.id].robloxError = up.error; fail++; }
             await saveToCloud(); await sleep(2000);
         }
-        
-        lastLibraryHash = ''; lastDisplayHashes = {};
         await updateAllChannels();
         await interaction.editReply({ embeds: [new EmbedBuilder().setTitle('✅ เสร็จสิ้น!').setImage(ASSETS.SUCCESS)
             .addFields({ name: '🟢 สำเร็จ', value: `\`${ok}\``, inline: true }, { name: '🔴 ล้มเหลว', value: `\`${fail}\``, inline: true }).setColor(CONFIG.COLOR.SUCCESS)], components: [] }); return;
@@ -1925,7 +1505,7 @@ async function handleComponents(interaction) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// [SECTION 26] - ADMIN PANEL
+// [SECTION 22] - ADMIN PANEL
 // ═══════════════════════════════════════════════════════════════════════════
 
 function buildAdminPanel() {
@@ -1934,8 +1514,8 @@ function buildAdminPanel() {
     const pending = songList.length - uploaded;
     
     const embed = new EmbedBuilder()
-        .setTitle('🎛️ แผงควบคุมผู้ดูแล v10.0')
-        .setDescription('**10-Layer Fallback Edition**\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+        .setTitle('🎛️ แผงควบคุมผู้ดูแล v12.0')
+        .setDescription('**Full Display Edition**\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
         .addFields(
             { name: '🔒 สถานะ', value: isLocked ? '`🔒 ล็อก`' : '`🔓 ปลดล็อก`', inline: true },
             { name: '⏱️ ออนไลน์', value: `\`${fmtUptime(Date.now() - stats.startTime)}\``, inline: true },
@@ -1943,22 +1523,21 @@ function buildAdminPanel() {
             { name: '📂 เพลง', value: `\`${songList.length}\``, inline: true },
             { name: '🟢 นำเข้า', value: `\`${uploaded}\``, inline: true },
             { name: '🔴 รอ', value: `\`${pending}\``, inline: true },
-            { name: '🛡️ L1-L3', value: `\`${stats.layer1Success + stats.layer2Success + stats.layer3Success}\``, inline: true },
-            { name: '🛡️ L4-L9', value: `\`${stats.layer4Success + stats.layer5Success + stats.layer6Success + stats.layer7Success + stats.layer8Success + stats.layer9Success}\``, inline: true },
-            { name: '🛡️ L10', value: `\`${stats.layer10Success}\``, inline: true },
-            { name: '⚠️ Rate Limit', value: `\`${stats.rateLimitHits}\``, inline: true },
+            { name: '🛡️ ชั้น 1', value: `\`${stats.layer1Success}\``, inline: true },
+            { name: '🛡️ ชั้น 2', value: `\`${stats.layer2Success}\``, inline: true },
+            { name: '🛡️ ชั้น 3', value: `\`${stats.layer3Success}\``, inline: true },
             { name: '🧹 เคลียร์', value: `\`${stats.totalCleaned}\``, inline: true },
-            { name: '🗑️ ซ้ำ', value: `\`${stats.totalDuplicatesRemoved}\``, inline: true }
+            { name: '🗑️ ซ้ำ', value: `\`${stats.totalDuplicatesRemoved}\``, inline: true },
+            { name: '❌ ล้มเหลว', value: `\`${stats.totalFailures}\``, inline: true }
         )
         .setColor(isLocked ? CONFIG.COLOR.ERROR : CONFIG.COLOR.SUCCESS)
-        .setFooter({ text: '🎛️ Admin Panel v10.0' })
+        .setFooter({ text: '🎛️ Admin Panel v12.0' })
         .setTimestamp();
     
     const row1 = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('admin_stats').setLabel('สถิติ').setStyle(ButtonStyle.Primary).setEmoji('📊'),
         new ButtonBuilder().setCustomId('admin_backup').setLabel('สำรอง').setStyle(ButtonStyle.Success).setEmoji('💾'),
-        new ButtonBuilder().setCustomId('admin_refresh').setLabel('รีเฟรช').setStyle(ButtonStyle.Secondary).setEmoji('🔄'),
-        new ButtonBuilder().setCustomId('admin_browse').setLabel('ดูคลัง').setStyle(ButtonStyle.Secondary).setEmoji('📚'));
+        new ButtonBuilder().setCustomId('admin_refresh').setLabel('รีเฟรช').setStyle(ButtonStyle.Secondary).setEmoji('🔄'));
     
     const row2 = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('admin_lock').setLabel(isLocked ? 'ปลดล็อก' : 'ล็อก').setStyle(isLocked ? ButtonStyle.Success : ButtonStyle.Danger).setEmoji(isLocked ? '🔓' : '🔒'),
@@ -1970,11 +1549,11 @@ function buildAdminPanel() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// [SECTION 27] - LOGIN
+// [SECTION 23] - LOGIN
 // ═══════════════════════════════════════════════════════════════════════════
 
 client.login(CONFIG.DISCORD_TOKEN);
 
 // ═══════════════════════════════════════════════════════════════════════════
-// END - v10.0 - 10-Layer Fallback Edition
+// END - v12.0 FULL DISPLAY EDITION
 // ═══════════════════════════════════════════════════════════════════════════
