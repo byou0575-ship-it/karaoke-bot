@@ -18,10 +18,45 @@ app.get('/', (req, res) => { res.send('Bot is running!'); });
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => { console.log(`Web server running on port ${PORT}`); });
 
+// ★★★ ระบบบันทึก/โหลดข้อมูลลงไฟล์ ★★★
+const DATA_DIR = '/tmp';
+const SONGS_FILE = path.join(DATA_DIR, 'songs.json');
+const CHANNEL_FILE = path.join(DATA_DIR, 'channel.json');
+
 let songs = {};
-let autoTask = null;
 let songChannelId = null;
+let autoTask = null;
 let refreshTask = null;
+
+// โหลดข้อมูลจากไฟล์
+function loadData() {
+    try {
+        if (fs.existsSync(SONGS_FILE)) {
+            songs = JSON.parse(fs.readFileSync(SONGS_FILE, 'utf8'));
+            console.log(`📂 Loaded ${Object.keys(songs).length} songs from file`);
+        }
+        if (fs.existsSync(CHANNEL_FILE)) {
+            const data = JSON.parse(fs.readFileSync(CHANNEL_FILE, 'utf8'));
+            songChannelId = data.channelId || null;
+            console.log(`📂 Loaded channel ID: ${songChannelId}`);
+        }
+    } catch (err) {
+        console.error('Error loading data:', err.message);
+    }
+}
+
+// บันทึกข้อมูลลงไฟล์
+function saveData() {
+    try {
+        fs.writeFileSync(SONGS_FILE, JSON.stringify(songs, null, 2), 'utf8');
+        fs.writeFileSync(CHANNEL_FILE, JSON.stringify({ channelId: songChannelId }, null, 2), 'utf8');
+    } catch (err) {
+        console.error('Error saving data:', err.message);
+    }
+}
+
+// โหลดข้อมูลตอนเริ่ม
+loadData();
 
 // ระบบคัดกรองเนื้อหา
 const BANNED_WORDS = [
@@ -45,37 +80,32 @@ function fmtDuration(secs) {
     return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-// ★★★ ค้นหาเพลงจาก JOOX (แก้ Path ให้ถูกต้อง) ★★★
+// ★★★ ค้นหาเพลงจาก JOOX ★★★
 async function searchJoox(query) {
     try {
         const response = await axios.get(`${MUSIC_API_URL}/api/v1/music/search`, {
-            params: {
-                q: query,
-                type: 'song',
-                sources: 'joox'  // ส่งเป็น string ก็ได้ API รับ
-            },
+            params: { q: query, type: 'song', sources: 'joox' },
             timeout: 30000
         });
-        
-        // ✅ แก้ Path ให้ถูกต้อง: data.songs
         if (response.data && response.data.data && response.data.data.songs) {
             return response.data.data.songs;
         }
         return [];
     } catch (error) {
-        console.error('go-music-api search error:', error.message);
+        console.error('Search error:', error.message);
         return [];
     }
 }
 
-// ★★★ ดาวน์โหลด MP3 โดยตรงจาก URL ที่ API ให้มา ★★★
+// ★★★ ดาวน์โหลด MP3 ★★★
 async function downloadAudio(downloadUrl) {
-    const tempPath = path.join('/tmp', `audio_${Date.now()}.mp3`);
-    const response = await axios.get(downloadUrl, { 
-        responseType: 'stream', 
+    const tempPath = path.join('/tmp', `audio_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.mp3`);
+    const response = await axios.get(downloadUrl, {
+        responseType: 'stream',
         timeout: 120000,
         maxContentLength: Infinity,
-        maxBodyLength: Infinity
+        maxBodyLength: Infinity,
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
     });
     const writer = fs.createWriteStream(tempPath);
     response.data.pipe(writer);
@@ -116,98 +146,54 @@ async function uploadToRoblox(filePath, title, artist) {
         if (response.data && response.data.assetId) {
             return { success: true, assetId: String(response.data.assetId) };
         }
-        return { success: false, error: JSON.stringify(response.data) };
+        return { success: false, error: JSON.stringify(response.data).slice(0, 100) };
     } catch (error) {
-        return { success: false, error: error.response?.data ? JSON.stringify(error.response.data) : error.message };
+        return { success: false, error: error.response?.data ? JSON.stringify(error.response.data).slice(0, 100) : error.message };
     }
 }
 
-// ★★★ ประมวลผลเพลง ★★★
-async function processSong(query, interaction = null) {
+// ★★★ ประมวลผลเพลงเดียว ★★★
+async function processSong(song, interaction = null, index = 0, total = 1) {
+    const songId = song.id;
+    const title = song.name || 'Unknown';
+    const artist = song.artist || 'Unknown';
+    const downloadUrl = song.url;
+
+    if (songs[songId]) return { status: 'skipped', reason: 'ซ้ำ' };
+    if (isBanned(title, artist)) return { status: 'banned', reason: 'ถูกคัดกรอง' };
+    if (!downloadUrl) return { status: 'failed', reason: 'ไม่มี URL' };
+
     try {
         if (interaction) {
             await interaction.editReply({
                 embeds: [new EmbedBuilder()
-                    .setTitle('🔍 กำลังค้นหาเพลงบน JOOX...')
-                    .setDescription(`🎵 **${query}**`)
-                    .setColor(0xf1c40f)
-                ]
-            });
-        }
-
-        const results = await searchJoox(query);
-        if (!results || results.length === 0) {
-            return { status: 'failed', reason: 'ไม่พบเพลงใน JOOX' };
-        }
-
-        // วนหาจนเจอเพลงที่ไม่ซ้ำและไม่ถูกแบน
-        let selected = null;
-        for (const song of results) {
-            const songId = song.id;
-            const title = song.name || 'Unknown';
-            const artist = song.artist || 'Unknown';
-            
-            if (songs[songId]) continue;
-            if (isBanned(title, artist)) continue;
-            
-            selected = song;
-            break;
-        }
-
-        if (!selected) {
-            return { status: 'skipped', reason: 'ทุกเพลงซ้ำหรือถูกคัดกรองแล้ว' };
-        }
-
-        const songId = selected.id;
-        const title = selected.name || 'Unknown';
-        const artist = selected.artist || 'Unknown';
-        const downloadUrl = selected.url;
-
-        if (!downloadUrl) {
-            return { status: 'failed', reason: 'ไม่มี URL ดาวน์โหลด' };
-        }
-
-        if (interaction) {
-            await interaction.editReply({
-                embeds: [new EmbedBuilder()
-                    .setTitle('⬇️ กำลังดาวน์โหลดเพลง...')
+                    .setTitle(`⏳ กำลังโหลดเพลงที่ ${index + 1}/${total}`)
                     .setDescription(`🎵 **${title}**\n🎤 ${artist}`)
                     .setColor(0xf1c40f)
-                    .setThumbnail(selected.cover || null)
+                    .setThumbnail(song.cover || null)
                 ]
             });
         }
 
         const audioPath = await downloadAudio(downloadUrl);
-
-        if (interaction) {
-            await interaction.editReply({
-                embeds: [new EmbedBuilder()
-                    .setTitle('⬆️ กำลังอัปโหลดขึ้น Roblox...')
-                    .setDescription(`🎵 **${title}**\n🎤 ${artist}`)
-                    .setColor(0x3498db)
-                    .setThumbnail(selected.cover || null)
-                ]
-            });
-        }
-
         const uploadResult = await uploadToRoblox(audioPath, title, artist);
 
         songs[songId] = {
             id: songId,
             title: title,
             artist: artist,
-            thumbnail: selected.cover || null,
+            thumbnail: song.cover || null,
             robloxAssetId: uploadResult.success ? uploadResult.assetId : null,
             robloxError: uploadResult.success ? null : uploadResult.error
         };
+        saveData(); // ★ บันทึกทันที
 
         try { fs.unlinkSync(audioPath); } catch (e) {}
 
         await refreshMessage();
         return { status: 'success', song: songs[songId], uploadResult };
     } catch (error) {
-        console.error('Process song error:', error.message);
+        console.error(`Process error for ${title}:`, error.message);
         return { status: 'failed', reason: error.message };
     }
 }
@@ -244,7 +230,7 @@ async function refreshMessage() {
 
     let description = '';
     chunk.forEach((s, i) => {
-        const roblox = s.robloxAssetId ? `🟢 Roblox: ${s.robloxAssetId}` : `🔴 ${s.robloxError ? 'Error' : 'ยังไม่อัปโหลด'}`;
+        const roblox = s.robloxAssetId ? `🟢 Roblox: ${s.robloxAssetId}` : `🔴 ยังไม่อัปโหลด`;
         description += `**${i + 1}. ${s.title}**\n　🎤 ${s.artist} · ${roblox}\n\n`;
     });
     embed.setDescription(description);
@@ -271,42 +257,51 @@ async function runAutoSearch(channel) {
     try {
         const searchMsg = await channel.send({
             embeds: [new EmbedBuilder()
-                .setTitle('🔍 ระบบอัตโนมัติกำลังหาเพลง (JOOX)...')
+                .setTitle('🔍 ระบบอัตโนมัติกำลังหาเพลง...')
                 .setDescription(`🎯 เป้าหมาย: **เพลงไทย**\n⏱️ เริ่มเมื่อ: ${new Date().toLocaleTimeString('th-TH')}`)
                 .setColor(0xf1c40f)
             ]
         });
 
-        const result = await processSong('เพลงไทย', searchMsg);
-
-        if (result.status === 'success') {
-            const uploadInfo = result.uploadResult.success
-                ? `🟢 Roblox: ${result.uploadResult.assetId}`
-                : `🔴 Roblox Error: ${result.uploadResult.error}`;
-            await searchMsg.edit({
-                embeds: [new EmbedBuilder()
-                    .setTitle('✅ เพิ่มเพลงอัตโนมัติสำเร็จ!')
-                    .setDescription(`🎵 **${result.song.title}**\n🎤 ${result.song.artist}\n\n${uploadInfo}\n\n🔄 หาใหม่ในอีก 60 วิ`)
-                    .setColor(0x57F287)
-                ]
-            });
-        } else {
-            await searchMsg.edit({
-                embeds: [new EmbedBuilder()
-                    .setTitle('⏭️ ไม่มีเพลงใหม่ในรอบนี้')
-                    .setDescription(`🔄 รอ 60 วิ แล้วหาใหม่`)
-                    .setColor(0xe67e22)
-                ]
-            });
+        const results = await searchJoox('เพลงไทย');
+        if (results.length === 0) {
+            await searchMsg.edit({ embeds: [new EmbedBuilder().setTitle('⏭️ ไม่พบเพลง').setDescription('รอ 60 วิ').setColor(0xe67e22)] });
+            return;
         }
+
+        // หาเพลงใหม่
+        for (let i = 0; i < results.length; i++) {
+            const result = await processSong(results[i], searchMsg, i, results.length);
+            if (result.status === 'success') {
+                const uploadInfo = result.uploadResult.success
+                    ? `🟢 Roblox: ${result.uploadResult.assetId}`
+                    : `🔴 Roblox Error`;
+                await searchMsg.edit({
+                    embeds: [new EmbedBuilder()
+                        .setTitle('✅ เพิ่มเพลงอัตโนมัติสำเร็จ!')
+                        .setDescription(`🎵 **${result.song.title}**\n🎤 ${result.song.artist}\n\n${uploadInfo}\n\n🔄 หาใหม่ในอีก 60 วิ`)
+                        .setColor(0x57F287)
+                    ]
+                });
+                return;
+            }
+        }
+
+        await searchMsg.edit({
+            embeds: [new EmbedBuilder()
+                .setTitle('⏭️ ไม่มีเพลงใหม่ในรอบนี้')
+                .setDescription(`ลอง ${results.length} เพลง แต่ซ้ำ/ถูกข้ามทั้งหมด\n🔄 รอ 60 วิ`)
+                .setColor(0xe67e22)
+            ]
+        });
     } catch (error) {
         console.error('Auto search error:', error.message);
-        await channel.send({ embeds: [new EmbedBuilder().setTitle('❌ Error').setDescription(error.message).setColor(0xe74c3c)] });
     }
 }
 
 client.once('ready', async () => {
     console.log(`Logged in as ${client.user.tag}!`);
+    console.log(`📂 Songs in storage: ${Object.keys(songs).length}`);
     startAutoRefresh();
 
     const commands = [
@@ -335,14 +330,27 @@ client.on('interactionCreate', async interaction => {
 
     if (commandName === 'ตั้งค่า') {
         songChannelId = interaction.channelId;
+        saveData();
         await interaction.reply({ embeds: [replyEmbed.setDescription('✅ ตั้งค่าช่องเพลงแล้ว!')] });
         await refreshMessage();
     }
 
     if (commandName === 'หาเพลง') {
         await interaction.deferReply();
-        const result = await processSong(options.getString('ชื่อเพลง'), interaction);
-        if (result.status === 'success') {
+        const query = options.getString('ชื่อเพลง');
+        const results = await searchJoox(query);
+        if (results.length === 0) {
+            await interaction.editReply({ embeds: [replyEmbed.setDescription(`❌ ไม่พบเพลง **${query}**`)] });
+            return;
+        }
+        
+        let result = null;
+        for (let i = 0; i < results.length; i++) {
+            result = await processSong(results[i], interaction, i, results.length);
+            if (result.status === 'success') break;
+        }
+
+        if (result && result.status === 'success') {
             const robloxInfo = result.uploadResult.success ? `✅ Roblox ID: ${result.uploadResult.assetId}` : `❌ ${result.uploadResult.error}`;
             await interaction.editReply({
                 embeds: [replyEmbed.setTitle('✅ สำเร็จ!').addFields(
@@ -352,7 +360,7 @@ client.on('interactionCreate', async interaction => {
                 )]
             });
         } else {
-            await interaction.editReply({ embeds: [replyEmbed.setDescription(`❌ ${result.reason || 'ไม่สำเร็จ'}`)] });
+            await interaction.editReply({ embeds: [replyEmbed.setDescription(`❌ ${result?.reason || 'ไม่สำเร็จ'}`)] });
         }
     }
 
@@ -360,15 +368,39 @@ client.on('interactionCreate', async interaction => {
         await interaction.deferReply();
         const artist = options.getString('ชื่อศิลปิน');
         const results = await searchJoox(artist);
+
+        if (results.length === 0) {
+            await interaction.editReply({ embeds: [replyEmbed.setDescription(`❌ ไม่พบเพลงของ **${artist}**`)] });
+            return;
+        }
+
+        await interaction.editReply({
+            embeds: [new EmbedBuilder()
+                .setTitle(`⏳ กำลังโหลดเพลงของ ${artist}...`)
+                .setDescription(`พบ **${results.length}** เพลง กำลังเริ่มโหลด...`)
+                .setColor(0xf1c40f)
+            ]
+        });
+
         const added = [];
-        for (let i = 0; i < Math.min(results.length, 10); i++) {
-            const r = await processSong(results[i].name + ' ' + (results[i].artist || ''), null);
-            if (r.status === 'success') added.push(r.song);
+        const skipped = [];
+
+        for (let i = 0; i < results.length; i++) {
+            const result = await processSong(results[i], interaction, i, results.length);
+            if (result.status === 'success') added.push(result.song);
+            else skipped.push(result.reason || 'unknown');
             await new Promise(res => setTimeout(res, 3000));
         }
+
+        const summary = added.map(s => `- **${s.title}** ${s.robloxAssetId ? `🟢` : '🔴'}`).join('\n') || 'ไม่มีเพลงใหม่';
         await interaction.editReply({
-            embeds: [replyEmbed.setTitle(`✅ ดึงเพลงของ ${artist} สำเร็จ`)
-                .setDescription(added.map(s => `- **${s.title}** ${s.robloxAssetId ? `🟢` : '🔴'}`).join('\n') || 'ไม่มีเพลงใหม่')
+            embeds: [new EmbedBuilder()
+                .setTitle(`✅ ดึงเพลงของ ${artist} สำเร็จ!`)
+                .setDescription(summary)
+                .addFields(
+                    { name: '➕ สำเร็จ', value: `${added.length}`, inline: true },
+                    { name: '⏭️ ข้าม', value: `${skipped.length}`, inline: true }
+                )
                 .setColor(0x57F287)
             ]
         });
@@ -377,15 +409,39 @@ client.on('interactionCreate', async interaction => {
     if (commandName === 'เพลงฮิต') {
         await interaction.deferReply();
         const results = await searchJoox('เพลงไทย');
+
+        if (results.length === 0) {
+            await interaction.editReply({ embeds: [replyEmbed.setDescription('❌ ไม่พบเพลง')] });
+            return;
+        }
+
+        await interaction.editReply({
+            embeds: [new EmbedBuilder()
+                .setTitle('⏳ กำลังดึงเพลงฮิต...')
+                .setDescription(`พบ **${results.length}** เพลง กำลังเริ่มโหลด...`)
+                .setColor(0xf1c40f)
+            ]
+        });
+
         const added = [];
-        for (let i = 0; i < Math.min(results.length, 10); i++) {
-            const r = await processSong(results[i].name + ' ' + (results[i].artist || ''), null);
-            if (r.status === 'success') added.push(r.song);
+        const skipped = [];
+
+        for (let i = 0; i < results.length; i++) {
+            const result = await processSong(results[i], interaction, i, results.length);
+            if (result.status === 'success') added.push(result.song);
+            else skipped.push(result.reason);
             await new Promise(res => setTimeout(res, 3000));
         }
+
+        const summary = added.map(s => `- **${s.title}** ${s.robloxAssetId ? `🟢` : '🔴'}`).join('\n') || 'ไม่มีเพลงใหม่';
         await interaction.editReply({
-            embeds: [replyEmbed.setTitle('✅ ดึงเพลงฮิตสำเร็จ')
-                .setDescription(added.map(s => `- **${s.title}**`).join('\n') || 'ไม่มีเพลงใหม่')
+            embeds: [new EmbedBuilder()
+                .setTitle('✅ ดึงเพลงฮิตสำเร็จ!')
+                .setDescription(summary)
+                .addFields(
+                    { name: '➕ สำเร็จ', value: `${added.length}`, inline: true },
+                    { name: '⏭️ ข้าม', value: `${skipped.length}`, inline: true }
+                )
                 .setColor(0x57F287)
             ]
         });
@@ -393,6 +449,8 @@ client.on('interactionCreate', async interaction => {
 
     if (commandName === 'เริ่มหาเพลง') {
         if (autoTask) { await interaction.reply({ embeds: [replyEmbed.setDescription('⚠️ ทำงานอยู่แล้ว!')] }); return; }
+        songChannelId = interaction.channelId;
+        saveData();
         await interaction.reply({ embeds: [replyEmbed.setDescription('🚀 เริ่มระบบอัตโนมัติ!')] });
         await runAutoSearch(interaction.channel);
         autoTask = setInterval(async () => {
@@ -408,7 +466,7 @@ client.on('interactionCreate', async interaction => {
 
     if (commandName === 'ลบเพลง') {
         const id = options.getString('id');
-        if (songs[id]) { delete songs[id]; await interaction.reply({ embeds: [replyEmbed.setDescription(`✅ ลบ ${id} แล้ว!`)] }); await refreshMessage(); }
+        if (songs[id]) { delete songs[id]; saveData(); await interaction.reply({ embeds: [replyEmbed.setDescription(`✅ ลบ ${id} แล้ว!`)] }); await refreshMessage(); }
         else { await interaction.reply({ embeds: [replyEmbed.setDescription('❌ ไม่พบเพลง!')] }); }
     }
 
