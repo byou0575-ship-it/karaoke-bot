@@ -24,15 +24,17 @@ let autoTask = null;
 let songChannelId = null;
 let refreshTask = null;
 
-// ★★★ โหลด Cookies ให้ ytdl-core ★★★
+// ★★★ โหลด Cookies ให้ ytdl-core (แบบถูกต้อง) ★★★
 const cookiesPath = path.join(__dirname, 'cookies.txt');
 let agent = null;
 
 if (fs.existsSync(cookiesPath)) {
     try {
-        const cookieString = fs.readFileSync(cookiesPath, 'utf8');
-        agent = ytdl.createAgent(ytdl.parseCookies ? ytdl.parseCookies(cookieString) : cookieString);
-        console.log('✅ Cookies loaded for ytdl-core');
+        const cookieContent = fs.readFileSync(cookiesPath, 'utf8');
+        // ใช้ parseCookies ของ @distube/ytdl-core เพื่อแปลง Netscape เป็น array
+        const cookies = ytdl.parseCookies(cookieContent);
+        agent = ytdl.createAgent(cookies);
+        console.log(`✅ Cookies loaded (${cookies.length} items) for ytdl-core`);
     } catch (err) {
         console.error('❌ Failed to load cookies:', err.message);
         agent = null;
